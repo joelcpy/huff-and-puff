@@ -798,7 +798,17 @@ function resetGame() {
   floatTexts.length = 0;
 }
 
+let _fullscreenDone = false;
+function tryFullscreen() {
+  if (_fullscreenDone) return;
+  _fullscreenDone = true;
+  const el = document.documentElement;
+  if      (el.requestFullscreen)       el.requestFullscreen();
+  else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+}
+
 function doFlap() {
+  tryFullscreen();
   if (gameState === 'dead') { resetGame(); gameState = 'idle'; return; }
   if (gameState === 'idle') gameState = 'playing';
   puffy.vy        = FLAP_VY;
