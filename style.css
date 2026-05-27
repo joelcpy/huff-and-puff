@@ -1,0 +1,39 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #020a14;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#game-container {
+  position: relative;
+}
+
+#game-container canvas {
+  border-radius: 16px;
+  box-shadow: 0 0 60px rgba(0, 180, 255, 0.25), 0 0 120px rgba(0, 80, 180, 0.12);
+}
+
+#name-input {
+  position: absolute;
+  display: none;
+  background: rgba(0, 15, 40, 0.82);
+  border: 2px solid rgba(0, 180, 255, 0.55);
+  border-radius: 22px;
+  color: #b8e8ff;
+  text-align: center;
+  font-family: 'Arial Rounded MT Bold', Arial, sans-serif;
+  outline: none;
+  transform: translateX(-50%);
+}
+
+#name-input::placeholder { color: rgba(80, 160, 220, 0.5); }
+
+#name-input:focus {
+  border-color: rgba(0, 210, 255, 0.9);
+  box-shadow: 0 0 14px rgba(0, 180, 255, 0.35);
+}
