@@ -36,7 +36,7 @@ function positionNameInput() {
   nameInput.style.width    = Math.floor(cw * 0.58) + 'px';
   nameInput.style.fontSize = Math.floor(14 * scale) + 'px';
   nameInput.style.left     = Math.floor(cw / 2) + 'px';
-  nameInput.style.top      = Math.floor(oy + (H / 2 + 102) * scale) + 'px';
+  nameInput.style.top      = Math.floor(oy + (H / 2 + 72) * scale) + 'px';
   nameInput.style.padding  = Math.floor(5 * scale) + 'px ' + Math.floor(14 * scale) + 'px';
 }
 
@@ -399,75 +399,6 @@ tapText.anchor.set(0.5);
 tapText.x = W / 2;
 tapText.y = H / 2 + 10;
 titleScreen.addChild(tapText);
-
-// ─── Item legend on title screen ─────────────────────────────
-const legendGfx = new PIXI.Graphics();
-titleScreen.addChild(legendGfx);
-
-const LY   = 358;
-const LXS  = [52, 144, 236, 328];
-
-// divider
-legendGfx.lineStyle(1, 0x2a4466, 0.55);
-legendGfx.moveTo(22, LY - 18); legendGfx.lineTo(W - 22, LY - 18);
-legendGfx.lineStyle(0);
-
-// starfish
-;(function() {
-  const x = LXS[0], y = LY;
-  legendGfx.beginFill(0xff8833, 0.2); legendGfx.drawCircle(x, y, 12); legendGfx.endFill();
-  const pts = [];
-  for (let i = 0; i < 10; i++) {
-    const a = (i/10)*Math.PI*2 - Math.PI/2, r = i%2===0 ? 8 : 4;
-    pts.push(x+Math.cos(a)*r, y+Math.sin(a)*r);
-  }
-  legendGfx.beginFill(0xff7722); legendGfx.drawPolygon(pts); legendGfx.endFill();
-  legendGfx.beginFill(0xffcc44, 0.75); legendGfx.drawCircle(x, y, 3); legendGfx.endFill();
-}());
-
-// sea urchin
-;(function() {
-  const x = LXS[1], y = LY;
-  legendGfx.beginFill(0x9900cc, 0.2); legendGfx.drawCircle(x, y, 12); legendGfx.endFill();
-  for (let i = 0; i < 12; i++) {
-    const a = (i/12)*Math.PI*2;
-    const tx = x+Math.cos(a)*10, ty = y+Math.sin(a)*10;
-    legendGfx.beginFill(0xcc44ff, 0.9);
-    legendGfx.drawPolygon([x+Math.cos(a-0.18)*4, y+Math.sin(a-0.18)*4, tx, ty, x+Math.cos(a+0.18)*4, y+Math.sin(a+0.18)*4]);
-    legendGfx.endFill();
-  }
-  legendGfx.beginFill(0x440055); legendGfx.drawCircle(x, y, 4); legendGfx.endFill();
-  legendGfx.beginFill(0xdd88ff, 0.75); legendGfx.drawCircle(x, y, 2.5); legendGfx.endFill();
-}());
-
-// speed
-;(function() {
-  const x = LXS[2], y = LY;
-  legendGfx.beginFill(0x00ddcc, 0.25); legendGfx.drawCircle(x, y, 11); legendGfx.endFill();
-  legendGfx.beginFill(0x00bbaa); legendGfx.drawCircle(x, y, 6); legendGfx.endFill();
-  legendGfx.beginFill(0x88ffee, 0.85); legendGfx.drawCircle(x, y, 3.5); legendGfx.endFill();
-  legendGfx.lineStyle(1.2, 0x00ffdd, 0.7);
-  [-2.5, 0, 2.5].forEach(dy => { legendGfx.moveTo(x-9, y+dy); legendGfx.lineTo(x-5, y+dy); });
-  legendGfx.lineStyle(0);
-}());
-
-// regular pearl
-;(function() {
-  const x = LXS[3], y = LY;
-  legendGfx.beginFill(0xddeeff, 0.3); legendGfx.drawCircle(x, y, 10); legendGfx.endFill();
-  legendGfx.beginFill(0xffffff, 0.85); legendGfx.drawCircle(x, y, 6); legendGfx.endFill();
-  legendGfx.beginFill(0xffffff, 0.5); legendGfx.drawCircle(x-1.5, y-1.5, 2.5); legendGfx.endFill();
-}());
-
-// labels
-['+5 ×combo', 'poison!', 'speed↑', '+1 pt'].forEach((txt, i) => {
-  const t = new PIXI.Text(txt, {
-    fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
-    fontSize: 9, fill: 0x88bbdd, stroke: 0x001428, strokeThickness: 2,
-  });
-  t.anchor.set(0.5); t.x = LXS[i]; t.y = LY + 17;
-  titleScreen.addChild(t);
-});
 
 // ─── Game-over screen ────────────────────────────────────────
 const gameOverScreen = new PIXI.Container();
