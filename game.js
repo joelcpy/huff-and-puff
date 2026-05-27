@@ -26,11 +26,13 @@ nameInput.addEventListener('focus', () => {
 });
 
 function positionNameInput() {
-  const scale = Math.min(window.innerWidth / W, window.innerHeight / H);
+  const vw    = window.visualViewport ? window.visualViewport.width  : window.innerWidth;
+  const vh    = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  const scale = Math.min(vw / W, vh / H);
   const cw    = Math.floor(W * scale);
   const ch    = Math.floor(H * scale);
-  const ox    = (window.innerWidth  - cw) / 2;
-  const oy    = (window.innerHeight - ch) / 2;
+  const ox    = (vw - cw) / 2;
+  const oy    = (vh - ch) / 2;
   nameInput.style.width    = Math.floor(cw * 0.58) + 'px';
   nameInput.style.fontSize = Math.floor(14 * scale) + 'px';
   nameInput.style.left     = Math.floor(cw / 2) + 'px';
@@ -39,12 +41,15 @@ function positionNameInput() {
 }
 
 function resize() {
-  const scale = Math.min(window.innerWidth / W, window.innerHeight / H);
+  const vw    = window.visualViewport ? window.visualViewport.width  : window.innerWidth;
+  const vh    = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  const scale = Math.min(vw / W, vh / H);
   app.view.style.width  = Math.floor(W * scale) + 'px';
   app.view.style.height = Math.floor(H * scale) + 'px';
   positionNameInput();
 }
 window.addEventListener('resize', resize);
+if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
 resize();
 
 // ─── Background music (playlist) ─────────────────────────────
