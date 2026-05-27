@@ -66,10 +66,9 @@ function startMusic() { bgMusic.play().catch(() => {}); }
 const autoplay = bgMusic.play();
 if (autoplay !== undefined) {
   autoplay.catch(() => {
-    // Browser blocked autoplay — start on first interaction instead
     document.addEventListener('keydown',    startMusic, { once: true });
-    app.view.addEventListener('click',      startMusic, { once: true });
-    app.view.addEventListener('touchstart', startMusic, { once: true });
+    document.addEventListener('click',      startMusic, { once: true });
+    document.addEventListener('touchstart', startMusic, { once: true, passive: true });
   });
 }
 
