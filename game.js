@@ -544,7 +544,7 @@ helpTitle.x = W / 2; helpTitle.y = 100;
 helpModal.addChild(helpTitle);
 
 const MODAL_ROWS = [
-  { type: 'starfish', name: 'Starfish',    desc: 'Collect in a row for ×combo bonus!' },
+  { type: 'starfish', name: 'Starfish  ★ ×2, ×3… combo!', desc: 'Collect consecutively for multiplied points' },
   { type: 'poison',   name: 'Sea Urchin',  desc: 'Puffy puffs up — harder to dodge'  },
   { type: 'speed',    name: 'Speed Boost', desc: 'Swim faster for 4 seconds'          },
   { type: 'regular',  name: 'Pearl',       desc: '+1 point each'                      },
@@ -611,15 +611,6 @@ MODAL_ROWS.forEach((row, i) => {
       g.beginFill(0xffffff, 0.5); g.drawCircle(x-2, y-2, 3); g.endFill();
     }
   });
-  // combo note
-  const comboNote = new PIXI.Text('★ Combo: collect starfish consecutively\n   for ×2, ×3… multiplied points!', {
-    fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
-    fontSize: 11, fill: 0xffdd44,
-    stroke: 0x442200, strokeThickness: 2,
-    align: 'left',
-  });
-  comboNote.x = 34; comboNote.y = 390;
-  helpModal.addChild(comboNote);
 }());
 
 const helpCloseHint = new PIXI.Text('tap anywhere to close', {
