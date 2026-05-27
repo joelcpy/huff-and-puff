@@ -21,6 +21,9 @@ nameInput.addEventListener('input', () => {
 nameInput.addEventListener('keydown', e => {
   if (e.key === 'Enter') { nameInput.blur(); doFlap(); }
 });
+nameInput.addEventListener('focus', () => {
+  setTimeout(() => window.scrollTo(0, 0), 50);
+});
 
 function positionNameInput() {
   const scale = Math.min(window.innerWidth / W, window.innerHeight / H);
@@ -30,7 +33,7 @@ function positionNameInput() {
   const oy    = (window.innerHeight - ch) / 2;
   nameInput.style.width    = Math.floor(cw * 0.58) + 'px';
   nameInput.style.fontSize = Math.floor(14 * scale) + 'px';
-  nameInput.style.left     = Math.floor(ox + cw / 2) + 'px';
+  nameInput.style.left     = Math.floor(cw / 2) + 'px';
   nameInput.style.top      = Math.floor(oy + (H / 2 + 72) * scale) + 'px';
   nameInput.style.padding  = Math.floor(5 * scale) + 'px ' + Math.floor(14 * scale) + 'px';
 }
