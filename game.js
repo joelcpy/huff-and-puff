@@ -561,6 +561,144 @@ retryText.x = W / 2;
 retryText.y = 438;
 gameOverScreen.addChild(retryText);
 
+// ─── Help button + modal ─────────────────────────────────────
+let showHelp = false;
+const HB_X = W - 22, HB_Y = 22, HB_R = 14;
+
+const helpBtnGfx  = new PIXI.Graphics();
+const helpBtnLabel = new PIXI.Text('?', {
+  fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
+  fontSize: 15, fontWeight: 'bold', fill: 0x88ccff,
+  stroke: 0x002244, strokeThickness: 2,
+});
+helpBtnLabel.anchor.set(0.5);
+helpBtnLabel.x = HB_X; helpBtnLabel.y = HB_Y;
+uiLayer.addChild(helpBtnGfx);
+uiLayer.addChild(helpBtnLabel);
+
+function drawHelpBtn() {
+  helpBtnGfx.clear();
+  helpBtnGfx.beginFill(0x001428, 0.72);
+  helpBtnGfx.lineStyle(1.5, 0x0088cc, 0.8);
+  helpBtnGfx.drawCircle(HB_X, HB_Y, HB_R);
+  helpBtnGfx.endFill();
+}
+drawHelpBtn();
+
+// modal
+const helpModal = new PIXI.Container();
+helpModal.visible = false;
+uiLayer.addChild(helpModal);
+
+const helpDim = new PIXI.Graphics();
+helpDim.beginFill(0x000510, 0.82);
+helpDim.drawRect(0, 0, W, H);
+helpDim.endFill();
+helpModal.addChild(helpDim);
+
+const helpPanel = new PIXI.Graphics();
+helpPanel.beginFill(0x00111e, 0.97);
+helpPanel.lineStyle(2, 0x0099cc, 0.65);
+helpPanel.drawRoundedRect(22, 70, W - 44, 390, 18);
+helpPanel.endFill();
+helpModal.addChild(helpPanel);
+
+const helpTitle = new PIXI.Text('How to Play', {
+  fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
+  fontSize: 22, fontWeight: 'bold',
+  fill: 0xffffff, stroke: 0x003a6e, strokeThickness: 5,
+});
+helpTitle.anchor.set(0.5);
+helpTitle.x = W / 2; helpTitle.y = 100;
+helpModal.addChild(helpTitle);
+
+const MODAL_ROWS = [
+  { type: 'starfish', name: 'Starfish',    desc: 'Collect in a row for ×combo bonus!' },
+  { type: 'poison',   name: 'Sea Urchin',  desc: 'Puffy puffs up — harder to dodge'  },
+  { type: 'speed',    name: 'Speed Boost', desc: 'Swim faster for 4 seconds'          },
+  { type: 'regular',  name: 'Pearl',       desc: '+1 point each'                      },
+];
+const ROW_YS = [150, 215, 278, 338];
+const ICON_X = 58;
+
+const modalIconGfx = new PIXI.Graphics();
+helpModal.addChild(modalIconGfx);
+
+MODAL_ROWS.forEach((row, i) => {
+  const y = ROW_YS[i];
+  const nameT = new PIXI.Text(row.name, {
+    fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
+    fontSize: 14, fontWeight: 'bold',
+    fill: 0xffffff, stroke: 0x002244, strokeThickness: 3,
+  });
+  nameT.anchor.set(0, 0.5); nameT.x = 84; nameT.y = y - 7;
+  helpModal.addChild(nameT);
+
+  const descT = new PIXI.Text(row.desc, {
+    fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
+    fontSize: 11, fill: 0x88bbdd,
+  });
+  descT.anchor.set(0, 0.5); descT.x = 84; descT.y = y + 10;
+  helpModal.addChild(descT);
+});
+
+// draw icons once (static)
+;(function() {
+  const g = modalIconGfx;
+  MODAL_ROWS.forEach((row, i) => {
+    const x = ICON_X, y = ROW_YS[i];
+    if (row.type === 'starfish') {
+      g.beginFill(0xff8833, 0.22); g.drawCircle(x, y, 14); g.endFill();
+      const pts = [];
+      for (let si = 0; si < 10; si++) {
+        const a = (si/10)*Math.PI*2 - Math.PI/2, r = si%2===0 ? 11 : 5;
+        pts.push(x+Math.cos(a)*r, y+Math.sin(a)*r);
+      }
+      g.beginFill(0xff7722); g.drawPolygon(pts); g.endFill();
+      g.beginFill(0xffcc44, 0.75); g.drawCircle(x, y, 4); g.endFill();
+    } else if (row.type === 'poison') {
+      g.beginFill(0x9900cc, 0.22); g.drawCircle(x, y, 14); g.endFill();
+      for (let si = 0; si < 12; si++) {
+        const a = (si/12)*Math.PI*2;
+        const tx = x+Math.cos(a)*12, ty = y+Math.sin(a)*12;
+        g.beginFill(0xcc44ff, 0.9);
+        g.drawPolygon([x+Math.cos(a-0.18)*5, y+Math.sin(a-0.18)*5, tx, ty, x+Math.cos(a+0.18)*5, y+Math.sin(a+0.18)*5]);
+        g.endFill();
+      }
+      g.beginFill(0x440055); g.drawCircle(x, y, 5); g.endFill();
+      g.beginFill(0xdd88ff, 0.75); g.drawCircle(x, y, 3); g.endFill();
+    } else if (row.type === 'speed') {
+      g.beginFill(0x00ddcc, 0.25); g.drawCircle(x, y, 13); g.endFill();
+      g.beginFill(0x00bbaa); g.drawCircle(x, y, 7); g.endFill();
+      g.beginFill(0x88ffee, 0.85); g.drawCircle(x, y, 4.5); g.endFill();
+      g.lineStyle(1.2, 0x00ffdd, 0.7);
+      [-3, 0, 3].forEach(dy => { g.moveTo(x-11, y+dy); g.lineTo(x-7, y+dy); });
+      g.lineStyle(0);
+    } else {
+      g.beginFill(0xddeeff, 0.3); g.drawCircle(x, y, 11); g.endFill();
+      g.beginFill(0xffffff, 0.85); g.drawCircle(x, y, 7); g.endFill();
+      g.beginFill(0xffffff, 0.5); g.drawCircle(x-2, y-2, 3); g.endFill();
+    }
+  });
+  // combo note
+  const comboNote = new PIXI.Text('★ Combo: collect starfish consecutively\n   for ×2, ×3… multiplied points!', {
+    fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
+    fontSize: 11, fill: 0xffdd44,
+    stroke: 0x442200, strokeThickness: 2,
+    align: 'left',
+  });
+  comboNote.x = 34; comboNote.y = 390;
+  helpModal.addChild(comboNote);
+}());
+
+const helpCloseHint = new PIXI.Text('tap anywhere to close', {
+  fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
+  fontSize: 12, fill: 0x336688,
+});
+helpCloseHint.anchor.set(0.5);
+helpCloseHint.x = W / 2; helpCloseHint.y = 440;
+helpModal.addChild(helpCloseHint);
+
 // ─── Combo display + floating score texts ────────────────────
 const comboText = new PIXI.Text('', {
   fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
@@ -887,8 +1025,25 @@ function doFlap() {
 document.addEventListener('keydown', e => {
   if (e.code === 'Space' && document.activeElement !== nameInput) { e.preventDefault(); doFlap(); }
 });
-app.view.addEventListener('click', doFlap);
-app.view.addEventListener('touchstart', e => { e.preventDefault(); doFlap(); }, { passive: false });
+function getCanvasXY(e) {
+  const rect = app.view.getBoundingClientRect();
+  const cx = e.touches ? e.touches[0].clientX : e.clientX;
+  const cy = e.touches ? e.touches[0].clientY : e.clientY;
+  return { x: (cx - rect.left) * (W / rect.width), y: (cy - rect.top) * (H / rect.height) };
+}
+
+function handleTap(e) {
+  if (showHelp) { showHelp = false; return; }
+  if (gameState === 'idle') {
+    const { x, y } = getCanvasXY(e);
+    const dx = x - HB_X, dy = y - HB_Y;
+    if (dx*dx + dy*dy <= HB_R*HB_R) { showHelp = true; return; }
+  }
+  doFlap();
+}
+
+app.view.addEventListener('click', handleTap);
+app.view.addEventListener('touchstart', e => { e.preventDefault(); handleTap(e); }, { passive: false });
 
 // ─── Draw Puffy ──────────────────────────────────────────────
 function drawPuffy(puff, finPhase, t) {
@@ -1138,10 +1293,17 @@ app.ticker.add(delta => {
   // ── Name input visibility ──
   nameInput.style.display = gameState === 'idle' ? 'block' : 'none';
 
+  // ── Help button + modal ──
+  const onIdle = gameState === 'idle';
+  helpBtnGfx.visible   = onIdle;
+  helpBtnLabel.visible = onIdle;
+  helpModal.visible    = showHelp;
+  if (showHelp) helpCloseHint.alpha = 0.4 + 0.4 * Math.sin(t * 2.5);
+
   // ── Title screen ──
-  titleScreen.visible = gameState === 'idle';
-  if (gameState === 'idle') {
-    titleText.y   = H / 2 - 60 + Math.sin(t * 1.4) * 6;
+  titleScreen.visible = onIdle;
+  if (onIdle) {
+    titleText.y   = H / 2 - 80 + Math.sin(t * 1.4) * 6;
     tapText.alpha = 0.5 + 0.5 * Math.sin(t * 2.8);
   }
 
