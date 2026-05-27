@@ -1222,7 +1222,7 @@ app.ticker.add(delta => {
   }
 
   // ── Name input visibility ──
-  nameInput.style.display = gameState === 'idle' ? 'block' : 'none';
+  nameInput.style.display = gameState === 'idle' && !showHelp ? 'block' : 'none';
 
   // ── Help button + modal ──
   const onIdle = gameState === 'idle';
