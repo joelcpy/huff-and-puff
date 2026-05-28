@@ -55,6 +55,7 @@ resize();
 // ─── Background music (playlist) ─────────────────────────────
 const TRACKS = ['audio/huffandpuff.mp3', 'audio/coconut-compass.mp3'];
 let trackIndex = 0;
+let muted = false;
 const bgMusic = new Audio(TRACKS[trackIndex]);
 bgMusic.volume = 0.4;
 bgMusic.addEventListener('ended', () => {
@@ -492,8 +493,11 @@ retryText.y = 438;
 gameOverScreen.addChild(retryText);
 
 // ─── Help button + modal ─────────────────────────────────────
-let showHelp = false;
+let showHelp   = false;
+let showLeader = false;
 const HB_X = W - 22, HB_Y = 22, HB_R = 14;
+const LB_X = 22,      LB_Y = 22, LB_R = 14;
+const MUTE_X = W - 22, MUTE_Y = 52, MUTE_R = 12;
 
 const helpBtnGfx  = new PIXI.Graphics();
 const helpBtnLabel = new PIXI.Text('?', {
@@ -514,6 +518,94 @@ function drawHelpBtn() {
   helpBtnGfx.endFill();
 }
 drawHelpBtn();
+
+// ─── Leaderboard button (top-left) ───────────────────────────
+const lbBtnGfx = new PIXI.Graphics();
+uiLayer.addChild(lbBtnGfx);
+
+function drawLbBtn() {
+  lbBtnGfx.clear();
+  lbBtnGfx.beginFill(0x001428, 0.72);
+  lbBtnGfx.lineStyle(1.5, 0x0088cc, 0.8);
+  lbBtnGfx.drawCircle(LB_X, LB_Y, LB_R);
+  lbBtnGfx.endFill();
+  lbBtnGfx.lineStyle(0);
+  const base = LB_Y + 7;
+  lbBtnGfx.beginFill(0xffcc00);  lbBtnGfx.drawRect(LB_X - 2.5, base - 10, 5, 10); lbBtnGfx.endFill();
+  lbBtnGfx.beginFill(0xaaaacc);  lbBtnGfx.drawRect(LB_X - 8.5, base - 7,  5, 7);  lbBtnGfx.endFill();
+  lbBtnGfx.beginFill(0xcc7722);  lbBtnGfx.drawRect(LB_X + 3.5, base - 5,  5, 5);  lbBtnGfx.endFill();
+}
+drawLbBtn();
+
+// ─── Leaderboard modal ────────────────────────────────────────
+const lbModal = new PIXI.Container();
+lbModal.visible = false;
+uiLayer.addChild(lbModal);
+
+const lbDim = new PIXI.Graphics();
+lbDim.beginFill(0x000510, 0.82);
+lbDim.drawRect(0, 0, W, H);
+lbDim.endFill();
+lbModal.addChild(lbDim);
+
+const lbPanel = new PIXI.Graphics();
+lbPanel.beginFill(0x00111e, 0.97);
+lbPanel.lineStyle(2, 0x0099cc, 0.65);
+lbPanel.drawRoundedRect(22, 70, W - 44, 400, 18);
+lbPanel.endFill();
+lbModal.addChild(lbPanel);
+
+const lbTitle = new PIXI.Text('Top Scores', {
+  fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
+  fontSize: 22, fontWeight: 'bold',
+  fill: 0xffffff, stroke: 0x003a6e, strokeThickness: 5,
+});
+lbTitle.anchor.set(0.5);
+lbTitle.x = W / 2; lbTitle.y = 100;
+lbModal.addChild(lbTitle);
+
+const lbHeader = new PIXI.Text('── TOP SCORES ──', {
+  fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
+  fontSize: 13, fill: 0x88ccff, stroke: 0x003a6e, strokeThickness: 2,
+});
+lbHeader.anchor.set(0.5);
+lbHeader.x = W / 2; lbHeader.y = 132;
+lbModal.addChild(lbHeader);
+
+const lbEntries = [];
+for (let i = 0; i < 8; i++) {
+  const lt = new PIXI.Text('', {
+    fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
+    fontSize: 14, fill: 0xffffff, stroke: 0x003a6e, strokeThickness: 2,
+  });
+  lt.anchor.set(0.5);
+  lt.x = W / 2; lt.y = 160 + i * 26;
+  lbModal.addChild(lt);
+  lbEntries.push(lt);
+}
+
+const lbCloseHint = new PIXI.Text('tap anywhere to close', {
+  fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
+  fontSize: 12, fill: 0x336688,
+});
+lbCloseHint.anchor.set(0.5);
+lbCloseHint.x = W / 2; lbCloseHint.y = 450;
+lbModal.addChild(lbCloseHint);
+
+async function openLeaderboard() {
+  showLeader = true;
+  lbEntries[0].text = 'loading…';
+  lbEntries[0].style.fill = 0x88bbdd;
+  for (let i = 1; i < 8; i++) lbEntries[i].text = '';
+  const top = await getTopScores(8);
+  if (!showLeader) return;
+  top.forEach((entry, i) => {
+    const n = entry.name.length > 10 ? entry.name.slice(0, 10) + '…' : entry.name;
+    lbEntries[i].text = `${i + 1}.  ${n}  ${entry.score}`;
+    lbEntries[i].style.fill = i === 0 ? 0xffdd44 : i === 1 ? 0xccccdd : i === 2 ? 0xdd9944 : 0xffffff;
+  });
+  for (let i = top.length; i < 8; i++) lbEntries[i].text = '';
+}
 
 // modal
 const helpModal = new PIXI.Container();
@@ -544,7 +636,7 @@ helpModal.addChild(helpTitle);
 
 const MODAL_ROWS = [
   { type: 'starfish', name: 'Starfish  ★ ×2, ×3… combo!', desc: 'Collect consecutively for multiplied points' },
-  { type: 'poison',   name: 'Sea Urchin',  desc: 'Puffy puffs up — harder to dodge'  },
+  { type: 'poison',   name: 'Sea Urchin',  desc: 'Puffs up bigger and slows down'    },
   { type: 'speed',    name: 'Speed Boost', desc: 'Swim faster for 4 seconds'          },
   { type: 'regular',  name: 'Pearl',       desc: '+1 point each'                      },
 ];
@@ -619,6 +711,35 @@ const helpCloseHint = new PIXI.Text('tap anywhere to close', {
 helpCloseHint.anchor.set(0.5);
 helpCloseHint.x = W / 2; helpCloseHint.y = 440;
 helpModal.addChild(helpCloseHint);
+
+// ─── Mute button (always visible, top-right below ?) ─────────
+const muteBtnGfx   = new PIXI.Graphics();
+const muteBtnLabel = new PIXI.Text('♪', {
+  fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
+  fontSize: 14, fontWeight: 'bold', fill: 0x88ccff,
+  stroke: 0x002244, strokeThickness: 2,
+});
+muteBtnLabel.anchor.set(0.5);
+muteBtnLabel.x = MUTE_X; muteBtnLabel.y = MUTE_Y;
+uiLayer.addChild(muteBtnGfx);
+uiLayer.addChild(muteBtnLabel);
+
+function drawMuteBtn() {
+  muteBtnGfx.clear();
+  muteBtnGfx.beginFill(0x001428, 0.72);
+  muteBtnGfx.lineStyle(1.5, 0x0088cc, 0.8);
+  muteBtnGfx.drawCircle(MUTE_X, MUTE_Y, MUTE_R);
+  muteBtnGfx.endFill();
+  muteBtnGfx.lineStyle(0);
+  muteBtnLabel.style.fill = muted ? 0x445566 : 0x88ccff;
+  if (muted) {
+    muteBtnGfx.lineStyle(1.5, 0xff4455, 0.9);
+    muteBtnGfx.moveTo(MUTE_X - 6, MUTE_Y - 6);
+    muteBtnGfx.lineTo(MUTE_X + 6, MUTE_Y + 6);
+    muteBtnGfx.lineStyle(0);
+  }
+}
+drawMuteBtn();
 
 // ─── Combo display + floating score texts ────────────────────
 const comboText = new PIXI.Text('', {
@@ -956,11 +1077,21 @@ function getCanvasXY(e) {
 }
 
 function handleTap(e) {
-  if (showHelp) { showHelp = false; return; }
+  const { x, y } = getCanvasXY(e);
+  const mx = x - MUTE_X, my = y - MUTE_Y;
+  if (mx*mx + my*my <= MUTE_R*MUTE_R) {
+    muted = !muted;
+    bgMusic.muted = muted;
+    drawMuteBtn();
+    return;
+  }
+  if (showLeader) { showLeader = false; return; }
+  if (showHelp)   { showHelp   = false; return; }
   if (gameState === 'idle') {
-    const { x, y } = getCanvasXY(e);
     const dx = x - HB_X, dy = y - HB_Y;
     if (dx*dx + dy*dy <= HB_R*HB_R) { showHelp = true; return; }
+    const lx = x - LB_X, ly = y - LB_Y;
+    if (lx*lx + ly*ly <= LB_R*LB_R) { openLeaderboard(); return; }
   }
   doFlap();
 }
@@ -1161,7 +1292,7 @@ app.ticker.add(delta => {
     if (puffy.shrinkTimer > 0) puffy.shrinkTimer -= delta * 0.016;
     if (puffy.happyTimer  > 0) puffy.happyTimer  -= delta * 0.016;
     if (puffy.speedTimer  > 0) puffy.speedTimer  -= delta * 0.016;
-    gameSpeed = puffy.speedTimer > 0 ? PIPE_SPD * 1.7 : PIPE_SPD;
+    gameSpeed = puffy.speedTimer > 0 ? PIPE_SPD * 1.7 : puffy.poisonTimer > 0 ? PIPE_SPD * 0.6 : PIPE_SPD;
     if (comboBurst > 1) comboBurst = Math.max(1, comboBurst - delta * 0.06);
 
     puffy.angle = Math.min(Math.max(puffy.vy * 0.058, -0.5), 1.3);
@@ -1214,14 +1345,17 @@ app.ticker.add(delta => {
   }
 
   // ── Name input visibility ──
-  nameInput.style.display = gameState === 'idle' && !showHelp ? 'block' : 'none';
+  nameInput.style.display = gameState === 'idle' && !showHelp && !showLeader ? 'block' : 'none';
 
   // ── Help button + modal ──
   const onIdle = gameState === 'idle';
   helpBtnGfx.visible   = onIdle;
   helpBtnLabel.visible = onIdle;
+  lbBtnGfx.visible     = onIdle;
   helpModal.visible    = showHelp;
-  if (showHelp) helpCloseHint.alpha = 0.4 + 0.4 * Math.sin(t * 2.5);
+  lbModal.visible      = showLeader;
+  if (showHelp)   helpCloseHint.alpha = 0.4 + 0.4 * Math.sin(t * 2.5);
+  if (showLeader) lbCloseHint.alpha   = 0.4 + 0.4 * Math.sin(t * 2.5);
 
   // ── Title screen ──
   titleScreen.visible = onIdle;
