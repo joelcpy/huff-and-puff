@@ -53,7 +53,12 @@ if (window.visualViewport) window.visualViewport.addEventListener('resize', resi
 resize();
 
 // ─── Background music (playlist) ─────────────────────────────
-const TRACKS = ['audio/huffandpuff.mp3', 'audio/coconut-compass.mp3'];
+const TRACKS = [
+  'audio/marzipan-tides.mp3',
+  'audio/huffandpuff.mp3',
+  'audio/coconut-compass.mp3',
+  'audio/bubblesprite-xylophone.mp3',
+];
 let trackIndex = 0;
 let muted = false;
 const bgMusic = new Audio(TRACKS[trackIndex]);
