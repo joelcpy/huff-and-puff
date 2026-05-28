@@ -495,8 +495,10 @@ gameOverScreen.addChild(retryText);
 // ─── Help button + modal ─────────────────────────────────────
 let showHelp       = false;
 let showLeader     = false;
-let showCharSelect = true;
-let selectedChar   = parseInt(localStorage.getItem('huffpuff_char') || '0');
+let showCharSelect          = false;
+let charSelectedThisSession = false;
+let charSelectPendingStart  = false;
+let selectedChar            = parseInt(localStorage.getItem('huffpuff_char') || '0');
 const HB_X = W - 24, HB_Y = 24, HB_R = 18;
 const LB_X = 24,      LB_Y = 24, LB_R = 18;
 const MUTE_X = W - 24, MUTE_Y = 62, MUTE_R = 16;
@@ -1236,7 +1238,10 @@ function tryFullscreen() {
 function doFlap() {
   tryFullscreen();
   if (gameState === 'dead') { resetGame(); gameState = 'idle'; return; }
-  if (gameState === 'idle') gameState = 'playing';
+  if (gameState === 'idle') {
+    if (!charSelectedThisSession) { charSelectPendingStart = true; showCharSelect = true; return; }
+    gameState = 'playing';
+  }
   puffy.vy        = FLAP_VY;
   puffy.puffTimer = 16;
 }
@@ -1263,6 +1268,7 @@ function handleTap(e) {
   if (showLeader) { showLeader = false; return; }
   if (showHelp)   { showHelp   = false; return; }
   if (showCharSelect) {
+    let picked = false;
     for (let i = 0; i < 3; i++) {
       const dx = x - SLOT_XS[i], dy = y - SLOT_Y;
       if (dx*dx + dy*dy <= 48*48) {
@@ -1270,9 +1276,12 @@ function handleTap(e) {
         localStorage.setItem('huffpuff_char', i);
         drawCharSelRings();
         drawCharBtn();
+        charSelectedThisSession = true;
+        picked = true;
       }
     }
     showCharSelect = false;
+    if (picked && charSelectPendingStart) { charSelectPendingStart = false; gameState = 'playing'; }
     return;
   }
   if (gameState === 'idle') {
@@ -1281,7 +1290,7 @@ function handleTap(e) {
     const lx = x - LB_X, ly = y - LB_Y;
     if (lx*lx + ly*ly <= LB_R*LB_R) { openLeaderboard(); return; }
     const cx = x - CHAR_X, cy = y - CHAR_Y;
-    if (cx*cx + cy*cy <= CHAR_R*CHAR_R) { showCharSelect = true; return; }
+    if (cx*cx + cy*cy <= CHAR_R*CHAR_R) { charSelectPendingStart = false; showCharSelect = true; return; }
   }
   doFlap();
 }
