@@ -493,11 +493,19 @@ retryText.y = 438;
 gameOverScreen.addChild(retryText);
 
 // ─── Help button + modal ─────────────────────────────────────
-let showHelp   = false;
-let showLeader = false;
+let showHelp       = false;
+let showLeader     = false;
+let showCharSelect = true;
+let selectedChar   = parseInt(localStorage.getItem('huffpuff_char') || '0');
 const HB_X = W - 22, HB_Y = 22, HB_R = 14;
 const LB_X = 22,      LB_Y = 22, LB_R = 14;
 const MUTE_X = W - 22, MUTE_Y = 52, MUTE_R = 12;
+const CHAR_X = 22,    CHAR_Y = 52, CHAR_R = 12;
+const CHAR_COLORS = [
+  { body: 0xf7be00, tail: 0xe09000 },
+  { body: 0x00ccee, tail: 0x0088aa },
+  { body: 0xff6622, tail: 0xdd4400 },
+];
 
 const helpBtnGfx  = new PIXI.Graphics();
 const helpBtnLabel = new PIXI.Text('?', {
@@ -536,6 +544,29 @@ function drawLbBtn() {
   lbBtnGfx.beginFill(0xcc7722);  lbBtnGfx.drawRect(LB_X + 3.5, base - 5,  5, 5);  lbBtnGfx.endFill();
 }
 drawLbBtn();
+
+// ─── Character button (top-left below leaderboard) ───────────
+const charBtnGfx = new PIXI.Graphics();
+uiLayer.addChild(charBtnGfx);
+
+function drawCharBtn() {
+  charBtnGfx.clear();
+  charBtnGfx.beginFill(0x001428, 0.72);
+  charBtnGfx.lineStyle(1.5, 0x0088cc, 0.8);
+  charBtnGfx.drawCircle(CHAR_X, CHAR_Y, CHAR_R);
+  charBtnGfx.endFill();
+  charBtnGfx.lineStyle(0);
+  const c = CHAR_COLORS[selectedChar];
+  charBtnGfx.beginFill(c.tail);
+  charBtnGfx.drawPolygon([CHAR_X - 5, CHAR_Y - 1, CHAR_X - 9, CHAR_Y - 4, CHAR_X - 9, CHAR_Y + 4, CHAR_X - 5, CHAR_Y + 1]);
+  charBtnGfx.endFill();
+  charBtnGfx.beginFill(c.body);
+  charBtnGfx.drawEllipse(CHAR_X + 1, CHAR_Y, 6, 4.5);
+  charBtnGfx.endFill();
+  charBtnGfx.beginFill(0xffffff); charBtnGfx.drawCircle(CHAR_X + 4, CHAR_Y - 1, 1.6); charBtnGfx.endFill();
+  charBtnGfx.beginFill(0x111111); charBtnGfx.drawCircle(CHAR_X + 4.4, CHAR_Y - 1, 0.9); charBtnGfx.endFill();
+}
+drawCharBtn();
 
 // ─── Leaderboard modal ────────────────────────────────────────
 const lbModal = new PIXI.Container();
@@ -719,6 +750,139 @@ const helpCloseHint = new PIXI.Text('tap anywhere to close', {
 helpCloseHint.anchor.set(0.5);
 helpCloseHint.x = W / 2; helpCloseHint.y = 440;
 helpModal.addChild(helpCloseHint);
+
+// ─── Character select modal ───────────────────────────────────
+const charModal = new PIXI.Container();
+charModal.visible = false;
+uiLayer.addChild(charModal);
+
+const charDim = new PIXI.Graphics();
+charDim.beginFill(0x000510, 0.82);
+charDim.drawRect(0, 0, W, H);
+charDim.endFill();
+charModal.addChild(charDim);
+
+const charPanel = new PIXI.Graphics();
+charPanel.beginFill(0x00111e, 0.97);
+charPanel.lineStyle(2, 0x0099cc, 0.65);
+charPanel.drawRoundedRect(22, 80, W - 44, 370, 18);
+charPanel.endFill();
+charModal.addChild(charPanel);
+
+const charTitle = new PIXI.Text('Choose Your Fish', {
+  fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
+  fontSize: 20, fontWeight: 'bold',
+  fill: 0xffffff, stroke: 0x003a6e, strokeThickness: 5,
+});
+charTitle.anchor.set(0.5);
+charTitle.x = W / 2; charTitle.y = 112;
+charModal.addChild(charTitle);
+
+// Static fish preview graphics
+const charPreviewGfx = new PIXI.Graphics();
+charModal.addChild(charPreviewGfx);
+
+const SLOT_XS = [78, 200, 322];
+const SLOT_Y  = 210;
+const CHAR_NAMES = ['Puffy', 'Bubbles', 'Sunny'];
+
+;(function drawCharPreviews() {
+  const g = charPreviewGfx;
+
+  // Puffy (slot 0)
+  ;(function() {
+    const cx = SLOT_XS[0], cy = SLOT_Y;
+    const br = 15, nSpikes = 10, spikeLen = 5;
+    g.beginFill(0xcc8000, 0.9);
+    for (let i = 0; i < nSpikes; i++) {
+      const a = (i/nSpikes)*Math.PI*2;
+      g.drawPolygon([Math.cos(a-0.22)*br+cx, Math.sin(a-0.22)*br+cy, Math.cos(a)*(br+spikeLen)+cx, Math.sin(a)*(br+spikeLen)+cy, Math.cos(a+0.22)*br+cx, Math.sin(a+0.22)*br+cy]);
+    }
+    g.endFill();
+    g.beginFill(0xf7be00); g.drawEllipse(cx, cy, br, br*0.88); g.endFill();
+    g.beginFill(0xffe980, 0.55); g.drawEllipse(cx+1, cy-br*0.1, br*0.54, br*0.38); g.endFill();
+    g.beginFill(0xe09000); g.drawPolygon([cx-br, cy-5, cx-br-10, cy-9, cx-br-10, cy+9, cx-br, cy+5]); g.endFill();
+    const ex = cx+br*0.36, ey = cy-br*0.18, er = 5;
+    g.beginFill(0xffffff); g.drawCircle(ex, ey, er); g.endFill();
+    g.beginFill(0x1a60c0); g.drawCircle(ex+0.7, ey, er*0.66); g.endFill();
+    g.beginFill(0x111111); g.drawCircle(ex+1.1, ey, er*0.38); g.endFill();
+    g.beginFill(0xffffff, 0.9); g.drawCircle(ex+er*0.28, ey-er*0.3, er*0.22); g.endFill();
+    g.beginFill(0xff99aa, 0.4); g.drawEllipse(ex-2, ey+er+2, 7, 3); g.endFill();
+  }());
+
+  // Bubbles (slot 1)
+  ;(function() {
+    const cx = SLOT_XS[1], cy = SLOT_Y;
+    const br = 16;
+    g.beginFill(0x00ccee); g.drawCircle(cx, cy, br); g.endFill();
+    g.beginFill(0x88eeff, 0.65); g.drawEllipse(cx+1, cy+br*0.2, br*0.58, br*0.48); g.endFill();
+    g.beginFill(0x0088aa); g.drawPolygon([cx-br, cy-5, cx-br-10, cy-9, cx-br-10, cy+9, cx-br, cy+5]); g.endFill();
+    g.beginFill(0x00aacc, 0.9); g.drawPolygon([cx+2, cy-br*0.15, cx+11, cy-br*0.15-9, cx+8, cy-br*0.15-5]); g.endFill();
+    const ex = cx+br*0.36, ey = cy-br*0.18, er = 5.5;
+    g.beginFill(0xffffff); g.drawCircle(ex, ey, er); g.endFill();
+    g.beginFill(0x006688); g.drawCircle(ex+0.7, ey, er*0.66); g.endFill();
+    g.beginFill(0x111111); g.drawCircle(ex+1.1, ey, er*0.38); g.endFill();
+    g.beginFill(0xffffff, 0.9); g.drawCircle(ex+er*0.28, ey-er*0.3, er*0.22); g.endFill();
+    g.beginFill(0xff99cc, 0.55); g.drawEllipse(ex-2, ey+er+2, 9, 4); g.endFill();
+    // bubble above
+    g.lineStyle(1.2, 0x88eeff, 0.85);
+    g.beginFill(0x88eeff, 0.2); g.drawCircle(cx+5, cy-br-8, 5); g.endFill();
+    g.lineStyle(0);
+    g.beginFill(0xffffff, 0.7); g.drawCircle(cx+3.5, cy-br-10, 1.5); g.endFill();
+  }());
+
+  // Sunny (slot 2)
+  ;(function() {
+    const cx = SLOT_XS[2], cy = SLOT_Y;
+    const br = 15, bry = 13;
+    g.beginFill(0xff6622); g.drawEllipse(cx, cy, br, bry); g.endFill();
+    g.beginFill(0xffffff, 0.92); g.drawEllipse(cx, cy, br*0.2, bry*0.92); g.endFill();
+    g.lineStyle(1, 0x333333, 0.35); g.drawEllipse(cx, cy, br*0.2, bry*0.92); g.lineStyle(0);
+    g.beginFill(0xdd4400); g.drawPolygon([cx-br, cy-5, cx-br-11, cy-9, cx-br-11, cy+9, cx-br, cy+5]); g.endFill();
+    g.beginFill(0xff8833, 0.9); g.drawPolygon([cx+3, cy-bry*0.15, cx+12, cy-bry*0.15-9, cx+9, cy-bry*0.15-5]); g.endFill();
+    const ex = cx+br*0.38, ey = cy-bry*0.18, er = 5;
+    g.beginFill(0xffffff); g.drawCircle(ex, ey, er); g.endFill();
+    g.beginFill(0x1a60c0); g.drawCircle(ex+0.7, ey, er*0.66); g.endFill();
+    g.beginFill(0x111111); g.drawCircle(ex+1.1, ey, er*0.38); g.endFill();
+    g.beginFill(0xffffff, 0.9); g.drawCircle(ex+er*0.28, ey-er*0.3, er*0.22); g.endFill();
+    g.beginFill(0xff99aa, 0.4); g.drawEllipse(ex-2, ey+er+2, 7, 3); g.endFill();
+  }());
+}());
+
+// Selection rings (redrawn on change)
+const charSelRings = new PIXI.Graphics();
+charModal.addChild(charSelRings);
+
+function drawCharSelRings() {
+  charSelRings.clear();
+  SLOT_XS.forEach((cx, i) => {
+    const sel = i === selectedChar;
+    charSelRings.lineStyle(sel ? 2.5 : 1.2, sel ? 0xffdd44 : 0x224466, sel ? 1 : 0.45);
+    charSelRings.drawCircle(cx, SLOT_Y, 48);
+    charSelRings.lineStyle(0);
+  });
+}
+drawCharSelRings();
+
+// Name labels
+CHAR_NAMES.forEach((name, i) => {
+  const nt = new PIXI.Text(name, {
+    fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
+    fontSize: 14, fontWeight: 'bold',
+    fill: 0xffffff, stroke: 0x002244, strokeThickness: 3,
+  });
+  nt.anchor.set(0.5);
+  nt.x = SLOT_XS[i]; nt.y = 275;
+  charModal.addChild(nt);
+});
+
+const charCloseHint = new PIXI.Text('tap a fish to select  ·  tap outside to close', {
+  fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
+  fontSize: 11, fill: 0x336688,
+});
+charCloseHint.anchor.set(0.5);
+charCloseHint.x = W / 2; charCloseHint.y = 435;
+charModal.addChild(charCloseHint);
 
 // ─── Mute button (always visible, top-right below ?) ─────────
 const muteBtnGfx   = new PIXI.Graphics();
@@ -1098,11 +1262,26 @@ function handleTap(e) {
   }
   if (showLeader) { showLeader = false; return; }
   if (showHelp)   { showHelp   = false; return; }
+  if (showCharSelect) {
+    for (let i = 0; i < 3; i++) {
+      const dx = x - SLOT_XS[i], dy = y - SLOT_Y;
+      if (dx*dx + dy*dy <= 48*48) {
+        selectedChar = i;
+        localStorage.setItem('huffpuff_char', i);
+        drawCharSelRings();
+        drawCharBtn();
+      }
+    }
+    showCharSelect = false;
+    return;
+  }
   if (gameState === 'idle') {
     const dx = x - HB_X, dy = y - HB_Y;
     if (dx*dx + dy*dy <= HB_R*HB_R) { showHelp = true; return; }
     const lx = x - LB_X, ly = y - LB_Y;
     if (lx*lx + ly*ly <= LB_R*LB_R) { openLeaderboard(); return; }
+    const cx = x - CHAR_X, cy = y - CHAR_Y;
+    if (cx*cx + cy*cy <= CHAR_R*CHAR_R) { showCharSelect = true; return; }
   }
   doFlap();
 }
@@ -1245,6 +1424,141 @@ function drawPuffy(puff, finPhase, t) {
   }
 }
 
+function drawBubbles(puff, finPhase, t) {
+  const g = puffyGfx;
+  g.clear();
+
+  const br = 11 + puff * 8;
+
+  const poisoned = puffy.poisonTimer > 0;
+  const speeding = puffy.speedTimer  > 0;
+  const bodyCol  = poisoned ? 0x9933cc : speeding ? 0x00ffee : 0x00ccee;
+  const bellyCol = poisoned ? 0xcc88ff : speeding ? 0xaaffee : 0x88eeff;
+  const tailCol  = poisoned ? 0x440066 : speeding ? 0x009988 : 0x0088aa;
+  const finCol   = poisoned ? 0x7722bb : speeding ? 0x00ccbb : 0x00aacc;
+
+  if (poisoned) {
+    const pulse = 0.4 + 0.35 * Math.sin(t * 4);
+    g.beginFill(0xaa00ff, pulse * 0.18); g.drawCircle(0, 0, br + 8); g.endFill();
+    g.lineStyle(1.5, 0xff00ff, pulse * 0.7); g.drawCircle(0, 0, br + 5); g.lineStyle(0);
+  }
+  if (speeding) {
+    const pulse = 0.5 + 0.5 * Math.sin(t * 10);
+    [-5, 0, 5].forEach((oy, i) => {
+      const len = 18 - i * 3;
+      g.lineStyle(1.8 - i * 0.3, 0x00ddff, (0.5 + 0.3 * pulse) * (1 - i * 0.2));
+      g.moveTo(-br - len, oy); g.lineTo(-br, oy);
+    });
+    g.lineStyle(0);
+  }
+
+  g.beginFill(bodyCol); g.drawCircle(0, 0, br); g.endFill();
+  g.beginFill(bellyCol, 0.65); g.drawEllipse(1, br * 0.2, br * 0.58, br * 0.48); g.endFill();
+  g.beginFill(tailCol); g.drawPolygon([-br, -5, -br-13, -11-puff*2, -br-13, 11+puff*2, -br, 5]); g.endFill();
+
+  const fa = finPhase;
+  g.beginFill(finCol, 0.9);
+  g.drawPolygon([2, -br*0.15, 2+Math.cos(fa)*11, -br*0.15-Math.sin(fa)*12, 2+Math.cos(fa+0.55)*7, -br*0.15-Math.sin(fa+0.55)*7]);
+  g.endFill();
+
+  // Floating bubble above (animated)
+  const bubY = -br - 7 - Math.sin(t * 1.8) * 3;
+  g.lineStyle(1.2, 0x88eeff, 0.8);
+  g.beginFill(0x88eeff, 0.22); g.drawCircle(br * 0.2, bubY, 4.5); g.endFill();
+  g.lineStyle(0);
+  g.beginFill(0xffffff, 0.65); g.drawCircle(br * 0.2 - 1.2, bubY - 1.5, 1.3); g.endFill();
+
+  const ex = br * 0.36, ey = -br * 0.18;
+  const er = 5 + puff * 2.5;
+  const happy = puffy.happyTimer > 0;
+  const eyeR  = happy ? er * 1.4 : er;
+
+  g.beginFill(0xffffff); g.drawCircle(ex, ey, eyeR); g.endFill();
+  g.beginFill(0x006688); g.drawCircle(ex+0.8, ey, eyeR*0.66); g.endFill();
+  g.beginFill(0x111111); g.drawCircle(ex+1.3, ey, eyeR*0.38); g.endFill();
+  g.beginFill(0xffffff, 0.92); g.drawCircle(ex+eyeR*0.28, ey-eyeR*0.3, eyeR*0.22); g.endFill();
+  if (happy) {
+    g.beginFill(0xffffff, 0.9);
+    g.drawCircle(ex+eyeR+3, ey-3, 2); g.drawCircle(ex+eyeR, ey-eyeR-2, 1.5); g.drawCircle(ex-2, ey-eyeR-2, 1.5);
+    g.endFill();
+  }
+  g.beginFill(0xff99cc, happy ? 0.65 : 0.5); g.drawEllipse(ex-2, ey+eyeR+2, happy ? 10 : 8, 4); g.endFill();
+}
+
+function drawSunny(puff, finPhase, t) {
+  const g = puffyGfx;
+  g.clear();
+
+  const br  = 10 + puff * 8;
+  const bry = br * 0.88;
+
+  const poisoned = puffy.poisonTimer > 0;
+  const speeding = puffy.speedTimer  > 0;
+  const bodyCol  = poisoned ? 0x9933cc : speeding ? 0xff9900 : 0xff6622;
+  const tailCol  = poisoned ? 0x440066 : speeding ? 0xaa4400 : 0xdd4400;
+  const finCol   = poisoned ? 0x7722bb : speeding ? 0xffcc00 : 0xff8833;
+
+  if (poisoned) {
+    const pulse = 0.4 + 0.35 * Math.sin(t * 4);
+    g.beginFill(0xaa00ff, pulse * 0.18); g.drawCircle(0, 0, br + 7); g.endFill();
+    g.lineStyle(1.5, 0xff00ff, pulse * 0.7); g.drawCircle(0, 0, br + 4); g.lineStyle(0);
+  }
+  if (speeding) {
+    const pulse = 0.5 + 0.5 * Math.sin(t * 10);
+    [-5, 0, 5].forEach((oy, i) => {
+      const len = 18 - i * 3;
+      g.lineStyle(1.8 - i * 0.3, 0xffaa00, (0.5 + 0.3 * pulse) * (1 - i * 0.2));
+      g.moveTo(-br - len, oy); g.lineTo(-br, oy);
+    });
+    g.lineStyle(0);
+  }
+
+  g.beginFill(bodyCol); g.drawEllipse(0, 0, br, bry); g.endFill();
+  // White stripe
+  g.beginFill(0xffffff, 0.9); g.drawEllipse(0, 0, br * 0.2, bry * 0.92); g.endFill();
+  g.lineStyle(1, 0x333333, 0.3); g.drawEllipse(0, 0, br * 0.2, bry * 0.92); g.lineStyle(0);
+
+  g.beginFill(tailCol); g.drawPolygon([-br, -6, -br-14, -12-puff*3, -br-14, 12+puff*3, -br, 6]); g.endFill();
+
+  const fa = finPhase;
+  g.beginFill(finCol, 0.9);
+  g.drawPolygon([3, -bry*0.15, 3+Math.cos(fa)*12, -bry*0.15-Math.sin(fa)*13, 3+Math.cos(fa+0.55)*8, -bry*0.15-Math.sin(fa+0.55)*8]);
+  g.endFill();
+
+  const ex = br * 0.36, ey = -bry * 0.18;
+  const er = 4.5 + puff * 2.5;
+  const happy = puffy.happyTimer > 0;
+  const eyeR  = happy ? er * 1.4 : er;
+
+  g.beginFill(0xffffff); g.drawCircle(ex, ey, eyeR); g.endFill();
+  g.beginFill(0x1a60c0); g.drawCircle(ex+0.8, ey, eyeR*0.66); g.endFill();
+  g.beginFill(0x111111); g.drawCircle(ex+1.3, ey, eyeR*0.38); g.endFill();
+  g.beginFill(0xffffff, 0.92); g.drawCircle(ex+eyeR*0.28, ey-eyeR*0.3, eyeR*0.22); g.endFill();
+  if (happy) {
+    g.beginFill(0xffffff, 0.9);
+    g.drawCircle(ex+eyeR+3, ey-3, 2); g.drawCircle(ex+eyeR, ey-eyeR-2, 1.5); g.drawCircle(ex-2, ey-eyeR-2, 1.5);
+    g.endFill();
+  }
+  g.beginFill(0xff99aa, happy ? 0.6 : 0.38); g.drawEllipse(ex-2, ey+eyeR+2, happy ? 10 : 7, 3.5); g.endFill();
+
+  if (happy) {
+    g.beginFill(0x772200, 0.9); g.drawEllipse(ex+2, ey+eyeR+8, 8, 5); g.endFill();
+    g.beginFill(0xff6622, 0.95); g.drawEllipse(ex+2, ey+eyeR+4.5, 8, 5); g.endFill();
+  } else if (puff > 0.55) {
+    g.beginFill(0x994400); g.drawCircle(ex+4, ey+er+6, 4); g.endFill();
+    g.beginFill(0xff8866, 0.85); g.drawCircle(ex+4, ey+er+6, 2.4); g.endFill();
+  } else {
+    g.beginFill(0x994400, 0.75); g.drawEllipse(ex+4, ey+er+5, 4.5, 2.2); g.endFill();
+    g.beginFill(0xff6622, 0.85); g.drawEllipse(ex+4, ey+er+3.5, 4.5, 2.2); g.endFill();
+  }
+}
+
+function drawPlayer(puff, finPhase, t) {
+  if      (selectedChar === 1) drawBubbles(puff, finPhase, t);
+  else if (selectedChar === 2) drawSunny(puff, finPhase, t);
+  else                         drawPuffy(puff, finPhase, t);
+}
+
 // ─── Main loop ───────────────────────────────────────────────
 let t = 0;
 
@@ -1322,7 +1636,7 @@ app.ticker.add(delta => {
   puffyGfx.y        = puffy.y;
   puffyGfx.rotation = puffy.angle;
   puffyGfx.scale.set(puffy.poisonTimer > 0 ? 1.2 : puffy.shrinkTimer > 0 ? 0.6 : 1.0);
-  drawPuffy(puffy.puff, puffy.finPhase, t);
+  drawPlayer(puffy.puff, puffy.finPhase, t);
 
   // ── Combo display ──
   if (starCombo >= 1 && gameState === 'playing') {
@@ -1356,17 +1670,20 @@ app.ticker.add(delta => {
   }
 
   // ── Name input visibility ──
-  nameInput.style.display = gameState === 'idle' && !showHelp && !showLeader ? 'block' : 'none';
+  nameInput.style.display = gameState === 'idle' && !showHelp && !showLeader && !showCharSelect ? 'block' : 'none';
 
   // ── Help button + modal ──
   const onIdle = gameState === 'idle';
   helpBtnGfx.visible   = onIdle;
   helpBtnLabel.visible = onIdle;
   lbBtnGfx.visible     = onIdle;
+  charBtnGfx.visible   = onIdle;
   helpModal.visible    = showHelp;
   lbModal.visible      = showLeader;
-  if (showHelp)   helpCloseHint.alpha = 0.4 + 0.4 * Math.sin(t * 2.5);
-  if (showLeader) lbCloseHint.alpha   = 0.4 + 0.4 * Math.sin(t * 2.5);
+  charModal.visible    = showCharSelect;
+  if (showHelp)       helpCloseHint.alpha = 0.4 + 0.4 * Math.sin(t * 2.5);
+  if (showLeader)     lbCloseHint.alpha   = 0.4 + 0.4 * Math.sin(t * 2.5);
+  if (showCharSelect) charCloseHint.alpha = 0.4 + 0.4 * Math.sin(t * 2.5);
 
   // ── Title screen ──
   titleScreen.visible = onIdle;
