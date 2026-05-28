@@ -1,6 +1,6 @@
 # Huff & Puff
 
-A browser-based arcade game where you guide Puffy the pufferfish through coral obstacles, collect pearls, and chase high scores on a global leaderboard.
+A browser-based arcade game where you guide your fish through coral obstacles, collect pearls, and chase high scores on a global leaderboard. Choose from three characters: Puffy (pufferfish), Bubbles (teal fish), or Sunny (clownfish).
 
 **Live:** [huff-and-puff.vercel.app](https://huff-and-puff.vercel.app)
 
@@ -20,6 +20,7 @@ A browser-based arcade game where you guide Puffy the pufferfish through coral o
 | Speed Boost | Swim faster for 4 seconds |
 
 - Enter your name on the title screen to appear on the leaderboard
+- Choose your character at the start of each session (or tap the fish icon on the title screen)
 - Tap **?** on the title screen for a full item guide
 
 ---
