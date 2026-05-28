@@ -52,22 +52,70 @@ window.addEventListener('resize', resize);
 if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
 resize();
 
-// ─── Background music (playlist) ─────────────────────────────
+// ─── Background music (crossfading playlist) ─────────────────
 const TRACKS = [
   'audio/marzipan-tides.mp3',
   'audio/huffandpuff.mp3',
   'audio/coconut-compass.mp3',
   'audio/bubblesprite-xylophone.mp3',
 ];
-let trackIndex = 0;
-let muted = false;
-const bgMusic = new Audio(TRACKS[trackIndex]);
-bgMusic.volume = 0.4;
-bgMusic.addEventListener('ended', () => {
-  trackIndex = (trackIndex + 1) % TRACKS.length;
-  bgMusic.src = TRACKS[trackIndex];
-  bgMusic.play();
-});
+const TARGET_VOL = 0.4;
+const FADE_SECS  = 3;
+let trackIndex  = 0;
+let muted       = false;
+let bgMusic     = new Audio(TRACKS[0]);
+let bgMusicNext = null;
+let crossfading = false;
+bgMusic.volume  = TARGET_VOL;
+
+function attachTrackListeners(audio) {
+  function onTime() {
+    if (!audio.duration) return;
+    if (audio.currentTime >= audio.duration - FADE_SECS) {
+      audio.removeEventListener('timeupdate', onTime);
+      audio.removeEventListener('ended', onEnd);
+      beginCrossfade();
+    }
+  }
+  function onEnd() {
+    audio.removeEventListener('timeupdate', onTime);
+    audio.removeEventListener('ended', onEnd);
+    beginCrossfade();
+  }
+  audio.addEventListener('timeupdate', onTime);
+  audio.addEventListener('ended', onEnd);
+}
+
+function beginCrossfade() {
+  if (crossfading) return;
+  crossfading = true;
+  trackIndex  = (trackIndex + 1) % TRACKS.length;
+  bgMusicNext = new Audio(TRACKS[trackIndex]);
+  bgMusicNext.volume = 0;
+  bgMusicNext.muted  = muted;
+  bgMusicNext.play().catch(() => {});
+  const start = performance.now();
+  function tick(now) {
+    const p = Math.min((now - start) / (FADE_SECS * 1000), 1);
+    if (!muted) {
+      bgMusic.volume     = TARGET_VOL * (1 - p);
+      bgMusicNext.volume = TARGET_VOL * p;
+    }
+    if (p < 1) {
+      requestAnimationFrame(tick);
+    } else {
+      bgMusic.pause();
+      bgMusic     = bgMusicNext;
+      bgMusicNext = null;
+      crossfading = false;
+      attachTrackListeners(bgMusic);
+    }
+  }
+  requestAnimationFrame(tick);
+}
+
+attachTrackListeners(bgMusic);
+
 function startMusic() { bgMusic.play().catch(() => {}); }
 const autoplay = bgMusic.play();
 if (autoplay !== undefined) {
@@ -1267,6 +1315,7 @@ function handleTap(e) {
   if (mx*mx + my*my <= MUTE_R*MUTE_R) {
     muted = !muted;
     bgMusic.muted = muted;
+    if (bgMusicNext) bgMusicNext.muted = muted;
     drawMuteBtn();
     return;
   }
