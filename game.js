@@ -704,6 +704,14 @@ MODAL_ROWS.forEach((row, i) => {
   });
 }());
 
+const betaNotice = new PIXI.Text('★ Beta Test  ·  Ends 30 Jun 2026', {
+  fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
+  fontSize: 12, fill: 0xffcc44,
+});
+betaNotice.anchor.set(0.5);
+betaNotice.x = W / 2; betaNotice.y = 393;
+helpModal.addChild(betaNotice);
+
 const helpCloseHint = new PIXI.Text('tap anywhere to close', {
   fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
   fontSize: 12, fill: 0x336688,
