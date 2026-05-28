@@ -497,10 +497,10 @@ let showHelp       = false;
 let showLeader     = false;
 let showCharSelect = true;
 let selectedChar   = parseInt(localStorage.getItem('huffpuff_char') || '0');
-const HB_X = W - 22, HB_Y = 22, HB_R = 14;
-const LB_X = 22,      LB_Y = 22, LB_R = 14;
-const MUTE_X = W - 22, MUTE_Y = 52, MUTE_R = 12;
-const CHAR_X = 22,    CHAR_Y = 52, CHAR_R = 12;
+const HB_X = W - 24, HB_Y = 24, HB_R = 18;
+const LB_X = 24,      LB_Y = 24, LB_R = 18;
+const MUTE_X = W - 24, MUTE_Y = 62, MUTE_R = 16;
+const CHAR_X = 24,    CHAR_Y = 62, CHAR_R = 16;
 const CHAR_COLORS = [
   { body: 0xf7be00, tail: 0xe09000 },
   { body: 0x00ccee, tail: 0x0088aa },
@@ -510,7 +510,7 @@ const CHAR_COLORS = [
 const helpBtnGfx  = new PIXI.Graphics();
 const helpBtnLabel = new PIXI.Text('?', {
   fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
-  fontSize: 15, fontWeight: 'bold', fill: 0x88ccff,
+  fontSize: 19, fontWeight: 'bold', fill: 0x88ccff,
   stroke: 0x002244, strokeThickness: 2,
 });
 helpBtnLabel.anchor.set(0.5);
@@ -538,10 +538,10 @@ function drawLbBtn() {
   lbBtnGfx.drawCircle(LB_X, LB_Y, LB_R);
   lbBtnGfx.endFill();
   lbBtnGfx.lineStyle(0);
-  const base = LB_Y + 7;
-  lbBtnGfx.beginFill(0xffcc00);  lbBtnGfx.drawRect(LB_X - 2.5, base - 10, 5, 10); lbBtnGfx.endFill();
-  lbBtnGfx.beginFill(0xaaaacc);  lbBtnGfx.drawRect(LB_X - 8.5, base - 7,  5, 7);  lbBtnGfx.endFill();
-  lbBtnGfx.beginFill(0xcc7722);  lbBtnGfx.drawRect(LB_X + 3.5, base - 5,  5, 5);  lbBtnGfx.endFill();
+  const base = LB_Y + 9;
+  lbBtnGfx.beginFill(0xffcc00);  lbBtnGfx.drawRect(LB_X - 3,   base - 13, 6, 13); lbBtnGfx.endFill();
+  lbBtnGfx.beginFill(0xaaaacc);  lbBtnGfx.drawRect(LB_X - 10,  base - 9,  6, 9);  lbBtnGfx.endFill();
+  lbBtnGfx.beginFill(0xcc7722);  lbBtnGfx.drawRect(LB_X + 4,   base - 7,  6, 7);  lbBtnGfx.endFill();
 }
 drawLbBtn();
 
@@ -558,13 +558,13 @@ function drawCharBtn() {
   charBtnGfx.lineStyle(0);
   const c = CHAR_COLORS[selectedChar];
   charBtnGfx.beginFill(c.tail);
-  charBtnGfx.drawPolygon([CHAR_X - 5, CHAR_Y - 1, CHAR_X - 9, CHAR_Y - 4, CHAR_X - 9, CHAR_Y + 4, CHAR_X - 5, CHAR_Y + 1]);
+  charBtnGfx.drawPolygon([CHAR_X - 7, CHAR_Y - 1, CHAR_X - 12, CHAR_Y - 5, CHAR_X - 12, CHAR_Y + 5, CHAR_X - 7, CHAR_Y + 1]);
   charBtnGfx.endFill();
   charBtnGfx.beginFill(c.body);
-  charBtnGfx.drawEllipse(CHAR_X + 1, CHAR_Y, 6, 4.5);
+  charBtnGfx.drawEllipse(CHAR_X + 1, CHAR_Y, 8, 6);
   charBtnGfx.endFill();
-  charBtnGfx.beginFill(0xffffff); charBtnGfx.drawCircle(CHAR_X + 4, CHAR_Y - 1, 1.6); charBtnGfx.endFill();
-  charBtnGfx.beginFill(0x111111); charBtnGfx.drawCircle(CHAR_X + 4.4, CHAR_Y - 1, 0.9); charBtnGfx.endFill();
+  charBtnGfx.beginFill(0xffffff); charBtnGfx.drawCircle(CHAR_X + 5, CHAR_Y - 1, 2.1); charBtnGfx.endFill();
+  charBtnGfx.beginFill(0x111111); charBtnGfx.drawCircle(CHAR_X + 5.5, CHAR_Y - 1, 1.2); charBtnGfx.endFill();
 }
 drawCharBtn();
 
@@ -888,7 +888,7 @@ charModal.addChild(charCloseHint);
 const muteBtnGfx   = new PIXI.Graphics();
 const muteBtnLabel = new PIXI.Text('♪', {
   fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
-  fontSize: 14, fontWeight: 'bold', fill: 0x88ccff,
+  fontSize: 18, fontWeight: 'bold', fill: 0x88ccff,
   stroke: 0x002244, strokeThickness: 2,
 });
 muteBtnLabel.anchor.set(0.5);
@@ -906,8 +906,8 @@ function drawMuteBtn() {
   muteBtnLabel.style.fill = muted ? 0x445566 : 0x88ccff;
   if (muted) {
     muteBtnGfx.lineStyle(1.5, 0xff4455, 0.9);
-    muteBtnGfx.moveTo(MUTE_X - 6, MUTE_Y - 6);
-    muteBtnGfx.lineTo(MUTE_X + 6, MUTE_Y + 6);
+    muteBtnGfx.moveTo(MUTE_X - 8, MUTE_Y - 8);
+    muteBtnGfx.lineTo(MUTE_X + 8, MUTE_Y + 8);
     muteBtnGfx.lineStyle(0);
   }
 }
