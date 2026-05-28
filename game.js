@@ -806,6 +806,7 @@ const PIPE_SPD = 2.5;
 const obstacles = [];
 const pearls    = [];
 let lastSpawnMs = 0;
+let nextPipeMs  = 1800;
 let gameSpeed      = PIPE_SPD;
 let starCombo      = 0;
 let comboBurst     = 1;
@@ -890,6 +891,7 @@ function spawnObstacle(now) {
     bobPhase: Math.random() * Math.PI * 2,
   });
   lastSpawnMs = now;
+  nextPipeMs  = 1300 + Math.random() * 1000;
 }
 
 function hitTest() {
@@ -1040,6 +1042,7 @@ function resetGame() {
   pearls.forEach(p => pearlLayer.removeChild(p.g));
   pearls.length = 0;
   lastSpawnMs = 0;
+  nextPipeMs  = 1800;
   score       = 0;
 
   puffy.y = H / 2; puffy.vy = 0;
@@ -1263,7 +1266,7 @@ app.ticker.add(delta => {
   } else if (gameState === 'playing') {
     const now = performance.now();
 
-    if (now - lastSpawnMs > PIPE_MS) spawnObstacle(now);
+    if (now - lastSpawnMs > nextPipeMs * (PIPE_SPD / gameSpeed)) spawnObstacle(now);
 
     for (let i = obstacles.length - 1; i >= 0; i--) {
       const o = obstacles[i];
