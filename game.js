@@ -688,6 +688,7 @@ function spawnPearls(topH, botY) {
   const spread  = (botY - topH) * 0.25;
   const boosted = nextSetBoost;
   nextSetBoost  = false;
+  const colState = { starfishHit: false };
   [-1, 0, 1].forEach(i => {
     const g    = new PIXI.Graphics();
     pearlLayer.addChild(g);
@@ -695,7 +696,7 @@ function spawnPearls(topH, botY) {
     const type = boosted
       ? (rand < 0.45 ? 'starfish' : rand < 0.53 ? 'poison' : rand < 0.62 ? 'speed' : 'regular')
       : (rand < 0.74 ? 'regular'  : rand < 0.86 ? 'starfish' : rand < 0.92 ? 'poison' : 'speed');
-    pearls.push({ g, x: cx, y: mid + i * spread, type });
+    pearls.push({ g, x: cx, y: mid + i * spread, type, colState });
   });
 }
 
@@ -782,6 +783,7 @@ function updatePearls(t, delta) {
     const dy = puffy.y - p.y;
     if (Math.sqrt(dx * dx + dy * dy) < 18) {
       if (p.type === 'starfish') {
+        p.colState.starfishHit = true;
         starCombo++;
         comboBurst   = 1.8;
         nextSetBoost = true;
@@ -803,7 +805,7 @@ function updatePearls(t, delta) {
     }
 
     if (p.x < -20) {
-      if (p.type === 'starfish') starCombo = 0;
+      if (p.type === 'starfish' && !p.colState.starfishHit) starCombo = 0;
       pearlLayer.removeChild(p.g);
       pearls.splice(i, 1);
       continue;
