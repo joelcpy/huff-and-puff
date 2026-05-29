@@ -1,5 +1,10 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+html {
+  background: #020a14;
+  height: 100%;
+}
+
 body {
   background: #020a14;
   display: flex;
@@ -10,6 +15,13 @@ body {
   overflow: hidden;
   position: fixed;
   width: 100%;
+}
+
+@media (max-width: 500px) {
+  #game-container canvas {
+    border-radius: 0;
+    box-shadow: none;
+  }
 }
 
 #game-container {

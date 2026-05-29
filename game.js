@@ -1,4 +1,12 @@
-const W = 400, H = 600;
+const W  = 400;
+// Match the canvas aspect ratio to the *visible* viewport at load so the game
+// fills the screen with no letterbox bars. Using innerHeight (not screen.height)
+// keeps the canvas within the area the browser actually shows, so nothing is
+// hidden behind the address bar. On load the address bar is visible (smallest
+// viewport); afterwards the height only grows, so Math.min scaling stays
+// width-locked and the canvas never jumps when the bar hides.
+const H  = Math.max(600, Math.round(W * window.innerHeight / window.innerWidth));
+const PY = Math.round((H - 600) / 2);
 
 // ─── App ─────────────────────────────────────────────────────
 const app = new PIXI.Application({
@@ -24,6 +32,12 @@ nameInput.addEventListener('keydown', e => {
 nameInput.addEventListener('focus', () => {
   setTimeout(() => window.scrollTo(0, 0), 50);
 });
+nameInput.addEventListener('blur', () => {
+  // iOS scrolls the page up to lift the input above the keyboard (even with a
+  // fixed body). Undo that scroll once the keyboard has animated closed,
+  // otherwise the whole game stays shifted up.
+  setTimeout(() => { window.scrollTo(0, 0); resize(); }, 300);
+});
 
 function positionNameInput() {
   const vw    = window.visualViewport ? window.visualViewport.width  : window.innerWidth;
@@ -34,13 +48,16 @@ function positionNameInput() {
   const ox    = (vw - cw) / 2;
   const oy    = (vh - ch) / 2;
   nameInput.style.width    = Math.floor(cw * 0.58) + 'px';
-  nameInput.style.fontSize = Math.floor(14 * scale) + 'px';
+  // Min 16px: iOS Safari auto-zooms (and pans the viewport, leaving the game
+  // shifted up) when a focused input's font-size is under 16px.
+  nameInput.style.fontSize = Math.max(16, Math.floor(14 * scale)) + 'px';
   nameInput.style.left     = Math.floor(cw / 2) + 'px';
-  nameInput.style.top      = Math.floor(oy + (H / 2 + 72) * scale) + 'px';
+  nameInput.style.top      = Math.floor((H / 2 + 72) * scale) + 'px';
   nameInput.style.padding  = Math.floor(5 * scale) + 'px ' + Math.floor(14 * scale) + 'px';
 }
 
 function resize() {
+  if (document.activeElement === nameInput) return;
   const vw    = window.visualViewport ? window.visualViewport.width  : window.innerWidth;
   const vh    = window.visualViewport ? window.visualViewport.height : window.innerHeight;
   const scale = Math.min(vw / W, vh / H);
@@ -156,12 +173,13 @@ const causticLayer  = new PIXI.Container(); // animated light rays
 const fishLayer     = new PIXI.Container(); // background fish friends
 const bubbleLayer   = new PIXI.Container(); // rising bubbles
 const seaweedLayer  = new PIXI.Container(); // swaying seaweed
+const crabLayer     = new PIXI.Container(); // cute crab on the sand
 const obstacleLayer = new PIXI.Container(); // coral obstacles
 const pearlLayer    = new PIXI.Container(); // collectible pearls
 const playerLayer   = new PIXI.Container(); // Puffy the pufferfish
 const uiLayer       = new PIXI.Container(); // HUD text
 fishLayer.alpha = 0.32;
-app.stage.addChild(bgLayer, causticLayer, fishLayer, bubbleLayer, seaweedLayer, obstacleLayer, pearlLayer, playerLayer, uiLayer);
+app.stage.addChild(bgLayer, causticLayer, fishLayer, bubbleLayer, seaweedLayer, crabLayer, obstacleLayer, pearlLayer, playerLayer, uiLayer);
 
 // ─── Background gradient + sand ──────────────────────────────
 (function buildBackground() {
@@ -317,6 +335,80 @@ function updateSeaweed(t) {
   });
 }
 
+// ─── Cute crab strolling on the sand ─────────────────────────
+const crab = {
+  g:        new PIXI.Graphics(),
+  x:        W * 0.5,
+  dir:      1,
+  speed:    0.45,
+  legPhase: 0,
+};
+crabLayer.addChild(crab.g);
+
+function updateCrab(delta) {
+  crab.x += crab.dir * crab.speed * delta;
+  if (crab.x > W - 28) crab.dir = -1;
+  if (crab.x < 28)     crab.dir =  1;
+  crab.legPhase += delta * 0.3;
+
+  const g  = crab.g;
+  const cx = crab.x;
+  const by = H - 52 + Math.sin(crab.legPhase * 2) * 0.8; // body, with a tiny bob
+  const d  = crab.dir;
+  const bodyCol = 0xe0533a, darkCol = 0xb83018, legCol = 0xc23a22;
+  g.clear();
+
+  // legs — 3 per side, alternating walk swing
+  g.lineStyle(2.2, legCol, 1);
+  for (let i = 0; i < 3; i++) {
+    const sw = Math.sin(crab.legPhase * 2 + i * 1.2) * 3;
+    g.moveTo(cx - 6, by + 1 + i * 1.5);
+    g.lineTo(cx - 12, by + 6 + i * 2);
+    g.lineTo(cx - 15, by + 12 + sw);
+    g.moveTo(cx + 6, by + 1 + i * 1.5);
+    g.lineTo(cx + 12, by + 6 + i * 2);
+    g.lineTo(cx + 15, by + 12 - sw);
+  }
+  g.lineStyle(0);
+
+  // claws — lean toward walking direction
+  for (const side of [-1, 1]) {
+    const clX = cx + side * 17 + d * 3;
+    const clY = by - 6 + Math.sin(crab.legPhase * 2) * 1.5 * side;
+    g.lineStyle(2.6, legCol, 1);
+    g.moveTo(cx + side * 11, by - 1);
+    g.lineTo(clX, clY);
+    g.lineStyle(0);
+    g.beginFill(bodyCol);
+    g.drawCircle(clX, clY, 4.2);
+    g.endFill();
+    g.lineStyle(1.4, darkCol, 1);
+    g.moveTo(clX + side, clY - 3); g.lineTo(clX + side * 4, clY - 1);
+    g.moveTo(clX + side, clY + 1); g.lineTo(clX + side * 4, clY + 2.5);
+    g.lineStyle(0);
+  }
+
+  // body
+  g.beginFill(darkCol); g.drawEllipse(cx, by, 14, 9); g.endFill();
+  g.beginFill(bodyCol); g.drawEllipse(cx, by - 0.5, 13, 8); g.endFill();
+  g.beginFill(0xff8866, 0.5); g.drawEllipse(cx - 3, by - 3, 5, 2.5); g.endFill();
+
+  // eyes on stalks
+  for (const side of [-1, 1]) {
+    const ex = cx + side * 5;
+    g.lineStyle(2, darkCol, 1);
+    g.moveTo(ex, by - 6); g.lineTo(ex, by - 12);
+    g.lineStyle(0);
+    g.beginFill(0xffffff); g.drawCircle(ex, by - 13, 2.6); g.endFill();
+    g.beginFill(0x111111); g.drawCircle(ex + d * 0.8, by - 13, 1.3); g.endFill();
+  }
+
+  // little smile
+  g.lineStyle(1.3, darkCol, 1);
+  g.arc(cx, by, 5, 0.25 * Math.PI, 0.75 * Math.PI);
+  g.lineStyle(0);
+}
+
 // ─── Background fish friends ─────────────────────────────────
 const FISH_COLORS = [0xff6633, 0xff99bb, 0x44aaff, 0xffcc22, 0xbb66ff, 0x44ffcc, 0xff4488];
 const fishes = [];
@@ -460,7 +552,7 @@ uiLayer.addChild(gameOverScreen);
 
 const goBg = new PIXI.Graphics();
 goBg.beginFill(0x000a1a, 0.78);
-goBg.drawRoundedRect(18, 62, W - 36, 400, 14);
+goBg.drawRoundedRect(18, 62 + PY, W - 36, 400, 14);
 goBg.endFill();
 gameOverScreen.addChild(goBg);
 
@@ -478,7 +570,7 @@ const ohNoText = new PIXI.Text('Oh no, Puffy!', {
 });
 ohNoText.anchor.set(0.5);
 ohNoText.x = W / 2;
-ohNoText.y = 90;
+ohNoText.y = 90 + PY;
 gameOverScreen.addChild(ohNoText);
 
 const goScoreText = new PIXI.Text('', {
@@ -490,7 +582,7 @@ const goScoreText = new PIXI.Text('', {
 });
 goScoreText.anchor.set(0.5);
 goScoreText.x = W / 2;
-goScoreText.y = 140;
+goScoreText.y = 140 + PY;
 gameOverScreen.addChild(goScoreText);
 
 const goBestText = new PIXI.Text('', {
@@ -502,7 +594,7 @@ const goBestText = new PIXI.Text('', {
 });
 goBestText.anchor.set(0.5);
 goBestText.x = W / 2;
-goBestText.y = 170;
+goBestText.y = 170 + PY;
 gameOverScreen.addChild(goBestText);
 
 const goLeaderHeader = new PIXI.Text('── TOP SCORES ──', {
@@ -514,7 +606,7 @@ const goLeaderHeader = new PIXI.Text('── TOP SCORES ──', {
 });
 goLeaderHeader.anchor.set(0.5);
 goLeaderHeader.x = W / 2;
-goLeaderHeader.y = 205;
+goLeaderHeader.y = 205 + PY;
 gameOverScreen.addChild(goLeaderHeader);
 
 const goLeaderEntries = [];
@@ -528,7 +620,7 @@ for (let i = 0; i < 8; i++) {
   });
   lt.anchor.set(0.5);
   lt.x = W / 2;
-  lt.y = 228 + i * 22;
+  lt.y = 228 + PY + i * 22;
   gameOverScreen.addChild(lt);
   goLeaderEntries.push(lt);
 }
@@ -542,7 +634,7 @@ const retryText = new PIXI.Text('tap to try again', {
 });
 retryText.anchor.set(0.5);
 retryText.x = W / 2;
-retryText.y = 438;
+retryText.y = 438 + PY;
 gameOverScreen.addChild(retryText);
 
 // ─── Help button + modal ─────────────────────────────────────
@@ -637,7 +729,7 @@ lbModal.addChild(lbDim);
 const lbPanel = new PIXI.Graphics();
 lbPanel.beginFill(0x00111e, 0.97);
 lbPanel.lineStyle(2, 0x0099cc, 0.65);
-lbPanel.drawRoundedRect(22, 70, W - 44, 400, 18);
+lbPanel.drawRoundedRect(22, 70 + PY, W - 44, 400, 18);
 lbPanel.endFill();
 lbModal.addChild(lbPanel);
 
@@ -647,7 +739,7 @@ const lbTitle = new PIXI.Text('Top Scores', {
   fill: 0xffffff, stroke: 0x003a6e, strokeThickness: 5,
 });
 lbTitle.anchor.set(0.5);
-lbTitle.x = W / 2; lbTitle.y = 100;
+lbTitle.x = W / 2; lbTitle.y = 100 + PY;
 lbModal.addChild(lbTitle);
 
 const lbHeader = new PIXI.Text('── TOP SCORES ──', {
@@ -655,7 +747,7 @@ const lbHeader = new PIXI.Text('── TOP SCORES ──', {
   fontSize: 13, fill: 0x88ccff, stroke: 0x003a6e, strokeThickness: 2,
 });
 lbHeader.anchor.set(0.5);
-lbHeader.x = W / 2; lbHeader.y = 132;
+lbHeader.x = W / 2; lbHeader.y = 132 + PY;
 lbModal.addChild(lbHeader);
 
 const lbEntries = [];
@@ -665,7 +757,7 @@ for (let i = 0; i < 8; i++) {
     fontSize: 14, fill: 0xffffff, stroke: 0x003a6e, strokeThickness: 2,
   });
   lt.anchor.set(0.5);
-  lt.x = W / 2; lt.y = 160 + i * 26;
+  lt.x = W / 2; lt.y = 160 + PY + i * 26;
   lbModal.addChild(lt);
   lbEntries.push(lt);
 }
@@ -675,7 +767,7 @@ const lbCloseHint = new PIXI.Text('tap anywhere to close', {
   fontSize: 12, fill: 0x336688,
 });
 lbCloseHint.anchor.set(0.5);
-lbCloseHint.x = W / 2; lbCloseHint.y = 450;
+lbCloseHint.x = W / 2; lbCloseHint.y = 450 + PY;
 lbModal.addChild(lbCloseHint);
 
 async function openLeaderboard() {
@@ -707,7 +799,7 @@ helpModal.addChild(helpDim);
 const helpPanel = new PIXI.Graphics();
 helpPanel.beginFill(0x00111e, 0.97);
 helpPanel.lineStyle(2, 0x0099cc, 0.65);
-helpPanel.drawRoundedRect(22, 70, W - 44, 390, 18);
+helpPanel.drawRoundedRect(22, 70 + PY, W - 44, 390, 18);
 helpPanel.endFill();
 helpModal.addChild(helpPanel);
 
@@ -717,7 +809,7 @@ const helpTitle = new PIXI.Text('How to Play', {
   fill: 0xffffff, stroke: 0x003a6e, strokeThickness: 5,
 });
 helpTitle.anchor.set(0.5);
-helpTitle.x = W / 2; helpTitle.y = 100;
+helpTitle.x = W / 2; helpTitle.y = 100 + PY;
 helpModal.addChild(helpTitle);
 
 const MODAL_ROWS = [
@@ -726,7 +818,7 @@ const MODAL_ROWS = [
   { type: 'speed',    name: 'Speed Boost', desc: 'Swim faster for 4 seconds'          },
   { type: 'regular',  name: 'Pearl',       desc: '+1 point each'                      },
 ];
-const ROW_YS = [150, 215, 278, 338];
+const ROW_YS = [150 + PY, 215 + PY, 278 + PY, 338 + PY];
 const ICON_X = 58;
 
 const modalIconGfx = new PIXI.Graphics();
@@ -795,7 +887,7 @@ const betaNotice = new PIXI.Text('★ Beta Test  ·  Ends 30 Jun 2026', {
   fontSize: 12, fill: 0xffcc44,
 });
 betaNotice.anchor.set(0.5);
-betaNotice.x = W / 2; betaNotice.y = 393;
+betaNotice.x = W / 2; betaNotice.y = 393 + PY;
 helpModal.addChild(betaNotice);
 
 const helpCloseHint = new PIXI.Text('tap anywhere to close', {
@@ -803,7 +895,7 @@ const helpCloseHint = new PIXI.Text('tap anywhere to close', {
   fontSize: 12, fill: 0x336688,
 });
 helpCloseHint.anchor.set(0.5);
-helpCloseHint.x = W / 2; helpCloseHint.y = 440;
+helpCloseHint.x = W / 2; helpCloseHint.y = 440 + PY;
 helpModal.addChild(helpCloseHint);
 
 // ─── Character select modal ───────────────────────────────────
@@ -820,7 +912,7 @@ charModal.addChild(charDim);
 const charPanel = new PIXI.Graphics();
 charPanel.beginFill(0x00111e, 0.97);
 charPanel.lineStyle(2, 0x0099cc, 0.65);
-charPanel.drawRoundedRect(22, 80, W - 44, 370, 18);
+charPanel.drawRoundedRect(22, 80 + PY, W - 44, 370, 18);
 charPanel.endFill();
 charModal.addChild(charPanel);
 
@@ -830,7 +922,7 @@ const charTitle = new PIXI.Text('Choose Your Fish', {
   fill: 0xffffff, stroke: 0x003a6e, strokeThickness: 5,
 });
 charTitle.anchor.set(0.5);
-charTitle.x = W / 2; charTitle.y = 112;
+charTitle.x = W / 2; charTitle.y = 112 + PY;
 charModal.addChild(charTitle);
 
 // Static fish preview graphics
@@ -838,7 +930,7 @@ const charPreviewGfx = new PIXI.Graphics();
 charModal.addChild(charPreviewGfx);
 
 const SLOT_XS = [78, 200, 322];
-const SLOT_Y  = 210;
+const SLOT_Y  = 210 + PY;
 const CHAR_NAMES = ['Puffy', 'Bubbles', 'Sunny'];
 
 ;(function drawCharPreviews() {
@@ -927,14 +1019,14 @@ CHAR_NAMES.forEach((name, i) => {
     fill: 0xffffff, stroke: 0x002244, strokeThickness: 3,
   });
   nt.anchor.set(0.5);
-  nt.x = SLOT_XS[i]; nt.y = 275;
+  nt.x = SLOT_XS[i]; nt.y = 275 + PY;
   charModal.addChild(nt);
 });
 
 const charStartBtnGfx = new PIXI.Graphics();
 charStartBtnGfx.beginFill(0x001428, 0.95);
 charStartBtnGfx.lineStyle(2, 0xffdd44, 0.95);
-charStartBtnGfx.drawRoundedRect(W / 2 - 65, 330, 130, 38, 10);
+charStartBtnGfx.drawRoundedRect(W / 2 - 65, 330 + PY, 130, 38, 10);
 charStartBtnGfx.endFill();
 charModal.addChild(charStartBtnGfx);
 
@@ -944,7 +1036,7 @@ const charStartBtnLabel = new PIXI.Text('START', {
   fill: 0xffdd44, stroke: 0x002244, strokeThickness: 3,
 });
 charStartBtnLabel.anchor.set(0.5);
-charStartBtnLabel.x = W / 2; charStartBtnLabel.y = 349;
+charStartBtnLabel.x = W / 2; charStartBtnLabel.y = 349 + PY;
 charModal.addChild(charStartBtnLabel);
 
 const charCloseHint = new PIXI.Text('tap outside to close', {
@@ -952,7 +1044,7 @@ const charCloseHint = new PIXI.Text('tap outside to close', {
   fontSize: 11, fill: 0x336688,
 });
 charCloseHint.anchor.set(0.5);
-charCloseHint.x = W / 2; charCloseHint.y = 415;
+charCloseHint.x = W / 2; charCloseHint.y = 415 + PY;
 charModal.addChild(charCloseHint);
 
 // ─── Mute button (always visible, top-right below ?) ─────────
@@ -1034,14 +1126,22 @@ const puffy = {
 
 // ─── Obstacles ───────────────────────────────────────────────
 const PIPE_W   = 65;
+// Gap is a fixed number of world units (not scaled to canvas height) so the
+// threading challenge is identical on every device — a tall phone canvas must
+// not turn into an easy, wide passage.
 const PIPE_GAP = 195;
+// On a tall canvas a gap could otherwise jump from the top to the bottom of the
+// screen between two obstacles — unreachable. Cap how far each gap moves from
+// the previous one so every jump stays fair.
+const MAX_GAP_DELTA = 190;
 const PIPE_MS  = 1800;
-const PIPE_SPD = 2.5;
+const PIPE_SPD = 2.9;
 
 const obstacles = [];
 const pearls    = [];
-let lastSpawnMs = 0;
-let nextPipeMs  = 1800;
+let nextSpacing = 300;  // world-unit distance to leave before the next column
+let lastTopH    = null; // previous gap's top edge, for reachability clamping
+let lastBobAmp  = 0;    // previous gap's bob amplitude, reserved in the clamp
 let gameSpeed      = PIPE_SPD;
 let starCombo      = 0;
 let comboBurst     = 1;
@@ -1106,11 +1206,31 @@ function drawCoralPair(g, topH, botY) {
   g.endFill();
 }
 
-function spawnObstacle(now) {
-  const minTop = 90;
+function spawnObstacle() {
+  const minTop = PY + 90;
   const maxTop = H - 80 - PIPE_GAP - 90;
-  const topH   = minTop + Math.random() * (maxTop - minTop);
-  const botY   = topH + PIPE_GAP;
+
+  // Decide movement up front so its bob can be reserved in the reach budget.
+  const moving = Math.random() < 0.5;
+  const bobAmp = moving ? 12 + Math.random() * 14 : 0; // ±12–26
+
+  let topH;
+  if (lastTopH === null) {
+    topH = minTop + Math.random() * (maxTop - minTop);
+  } else {
+    // nextSpacing is the exact centre-to-centre distance to the previous column.
+    const freeWin = Math.max(0, nextSpacing - PIPE_W); // open water between columns
+    // The fish climbs/falls far faster than it scrolls, and each 195-tall gap
+    // gives extra slack — but reserve room for BOTH columns bobbing together.
+    const reachable = freeWin * 1.4 + 70 - bobAmp - lastBobAmp;
+    const allowed   = Math.max(50, Math.min(MAX_GAP_DELTA, reachable));
+    const lo = Math.max(minTop, lastTopH - allowed);
+    const hi = Math.min(maxTop, lastTopH + allowed);
+    topH = lo + Math.random() * (hi - lo);
+  }
+  lastTopH   = topH;
+  lastBobAmp = bobAmp;
+  const botY = topH + PIPE_GAP;
 
   const g = new PIXI.Graphics();
   drawCoralPair(g, topH, botY);
@@ -1118,15 +1238,14 @@ function spawnObstacle(now) {
   obstacleLayer.addChild(g);
 
   spawnPearls(topH, botY);
-  const moving = Math.random() < 0.6;
   obstacles.push({
     g, topH, botY, passed: false,
-    bobAmp:   moving ? 20 + Math.random() * 20 : 0,
+    bobAmp,
     bobSpeed: 0.8 + Math.random() * 0.7,
     bobPhase: Math.random() * Math.PI * 2,
   });
-  lastSpawnMs = now;
-  nextPipeMs  = 1300 + Math.random() * 1000;
+  // Distance (world units) the next column must leave before it spawns.
+  nextSpacing = 250 + Math.random() * 120; // 250–370
 }
 
 function hitTest() {
@@ -1157,7 +1276,7 @@ function updatePearls(t, delta) {
         score += pts;
         addFloatText(p.x, p.y, `+${pts}`, starCombo >= 3 ? 0xff8800 : starCombo >= 2 ? 0xffdd44 : 0xffffff);
       } else if (p.type === 'poison') {
-        puffy.poisonTimer = 3;
+        puffy.poisonTimer = 5;
       } else if (p.type === 'speed') {
         puffy.speedTimer = 4;
       } else {
@@ -1276,8 +1395,9 @@ function resetGame() {
   obstacles.length = 0;
   pearls.forEach(p => pearlLayer.removeChild(p.g));
   pearls.length = 0;
-  lastSpawnMs = 0;
-  nextPipeMs  = 1800;
+  nextSpacing = 300;
+  lastTopH    = null;
+  lastBobAmp  = 0;
   score       = 0;
 
   puffy.y = H / 2; puffy.vy = 0;
@@ -1338,8 +1458,8 @@ function handleTap(e) {
   if (showLeader) { showLeader = false; return; }
   if (showHelp)   { showHelp   = false; return; }
   if (showCharSelect) {
-    // Start button hit: rect centered at (W/2, 349), 130×38
-    if (x >= W / 2 - 65 && x <= W / 2 + 65 && y >= 330 && y <= 368) {
+    // Start button hit: rect centered at (W/2, 349+PY), 130×38
+    if (x >= W / 2 - 65 && x <= W / 2 + 65 && y >= 330 + PY && y <= 368 + PY) {
       charSelectedThisSession = true;
       showCharSelect = false;
       if (charSelectPendingStart) { charSelectPendingStart = false; gameState = 'playing'; }
@@ -1655,6 +1775,7 @@ app.ticker.add(delta => {
   updateCaustics(t);
   updateBubbles();
   updateSeaweed(t);
+  updateCrab(delta);
   updateFishes(t, delta);
 
   puffy.finPhase += delta * 0.12;
@@ -1665,9 +1786,11 @@ app.ticker.add(delta => {
     puffy.angle = Math.sin(t * 1.9) * 0.08;
 
   } else if (gameState === 'playing') {
-    const now = performance.now();
-
-    if (now - lastSpawnMs > nextPipeMs * (PIPE_SPD / gameSpeed)) spawnObstacle(now);
+    // Spawn by world-distance, not a timer: the newest (rightmost) column must
+    // travel `nextSpacing` units past the spawn point before the next appears.
+    // This keeps spacing exact even when a speed boost or poison changes speed.
+    const newest = obstacles[obstacles.length - 1];
+    if (!newest || (W + 5) - newest.g.x >= nextSpacing) spawnObstacle();
 
     for (let i = obstacles.length - 1; i >= 0; i--) {
       const o = obstacles[i];
