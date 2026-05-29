@@ -1,4 +1,6 @@
-const W = 400, H = 600;
+const W  = 400;
+const H  = Math.max(600, Math.round(W * window.innerHeight / window.innerWidth));
+const PY = Math.round((H - 600) / 2);
 
 // ─── App ─────────────────────────────────────────────────────
 const app = new PIXI.Application({
@@ -460,7 +462,7 @@ uiLayer.addChild(gameOverScreen);
 
 const goBg = new PIXI.Graphics();
 goBg.beginFill(0x000a1a, 0.78);
-goBg.drawRoundedRect(18, 62, W - 36, 400, 14);
+goBg.drawRoundedRect(18, 62 + PY, W - 36, 400, 14);
 goBg.endFill();
 gameOverScreen.addChild(goBg);
 
@@ -478,7 +480,7 @@ const ohNoText = new PIXI.Text('Oh no, Puffy!', {
 });
 ohNoText.anchor.set(0.5);
 ohNoText.x = W / 2;
-ohNoText.y = 90;
+ohNoText.y = 90 + PY;
 gameOverScreen.addChild(ohNoText);
 
 const goScoreText = new PIXI.Text('', {
@@ -490,7 +492,7 @@ const goScoreText = new PIXI.Text('', {
 });
 goScoreText.anchor.set(0.5);
 goScoreText.x = W / 2;
-goScoreText.y = 140;
+goScoreText.y = 140 + PY;
 gameOverScreen.addChild(goScoreText);
 
 const goBestText = new PIXI.Text('', {
@@ -502,7 +504,7 @@ const goBestText = new PIXI.Text('', {
 });
 goBestText.anchor.set(0.5);
 goBestText.x = W / 2;
-goBestText.y = 170;
+goBestText.y = 170 + PY;
 gameOverScreen.addChild(goBestText);
 
 const goLeaderHeader = new PIXI.Text('── TOP SCORES ──', {
@@ -514,7 +516,7 @@ const goLeaderHeader = new PIXI.Text('── TOP SCORES ──', {
 });
 goLeaderHeader.anchor.set(0.5);
 goLeaderHeader.x = W / 2;
-goLeaderHeader.y = 205;
+goLeaderHeader.y = 205 + PY;
 gameOverScreen.addChild(goLeaderHeader);
 
 const goLeaderEntries = [];
@@ -528,7 +530,7 @@ for (let i = 0; i < 8; i++) {
   });
   lt.anchor.set(0.5);
   lt.x = W / 2;
-  lt.y = 228 + i * 22;
+  lt.y = 228 + PY + i * 22;
   gameOverScreen.addChild(lt);
   goLeaderEntries.push(lt);
 }
@@ -542,7 +544,7 @@ const retryText = new PIXI.Text('tap to try again', {
 });
 retryText.anchor.set(0.5);
 retryText.x = W / 2;
-retryText.y = 438;
+retryText.y = 438 + PY;
 gameOverScreen.addChild(retryText);
 
 // ─── Help button + modal ─────────────────────────────────────
@@ -637,7 +639,7 @@ lbModal.addChild(lbDim);
 const lbPanel = new PIXI.Graphics();
 lbPanel.beginFill(0x00111e, 0.97);
 lbPanel.lineStyle(2, 0x0099cc, 0.65);
-lbPanel.drawRoundedRect(22, 70, W - 44, 400, 18);
+lbPanel.drawRoundedRect(22, 70 + PY, W - 44, 400, 18);
 lbPanel.endFill();
 lbModal.addChild(lbPanel);
 
@@ -647,7 +649,7 @@ const lbTitle = new PIXI.Text('Top Scores', {
   fill: 0xffffff, stroke: 0x003a6e, strokeThickness: 5,
 });
 lbTitle.anchor.set(0.5);
-lbTitle.x = W / 2; lbTitle.y = 100;
+lbTitle.x = W / 2; lbTitle.y = 100 + PY;
 lbModal.addChild(lbTitle);
 
 const lbHeader = new PIXI.Text('── TOP SCORES ──', {
@@ -655,7 +657,7 @@ const lbHeader = new PIXI.Text('── TOP SCORES ──', {
   fontSize: 13, fill: 0x88ccff, stroke: 0x003a6e, strokeThickness: 2,
 });
 lbHeader.anchor.set(0.5);
-lbHeader.x = W / 2; lbHeader.y = 132;
+lbHeader.x = W / 2; lbHeader.y = 132 + PY;
 lbModal.addChild(lbHeader);
 
 const lbEntries = [];
@@ -665,7 +667,7 @@ for (let i = 0; i < 8; i++) {
     fontSize: 14, fill: 0xffffff, stroke: 0x003a6e, strokeThickness: 2,
   });
   lt.anchor.set(0.5);
-  lt.x = W / 2; lt.y = 160 + i * 26;
+  lt.x = W / 2; lt.y = 160 + PY + i * 26;
   lbModal.addChild(lt);
   lbEntries.push(lt);
 }
@@ -675,7 +677,7 @@ const lbCloseHint = new PIXI.Text('tap anywhere to close', {
   fontSize: 12, fill: 0x336688,
 });
 lbCloseHint.anchor.set(0.5);
-lbCloseHint.x = W / 2; lbCloseHint.y = 450;
+lbCloseHint.x = W / 2; lbCloseHint.y = 450 + PY;
 lbModal.addChild(lbCloseHint);
 
 async function openLeaderboard() {
@@ -707,7 +709,7 @@ helpModal.addChild(helpDim);
 const helpPanel = new PIXI.Graphics();
 helpPanel.beginFill(0x00111e, 0.97);
 helpPanel.lineStyle(2, 0x0099cc, 0.65);
-helpPanel.drawRoundedRect(22, 70, W - 44, 390, 18);
+helpPanel.drawRoundedRect(22, 70 + PY, W - 44, 390, 18);
 helpPanel.endFill();
 helpModal.addChild(helpPanel);
 
@@ -717,7 +719,7 @@ const helpTitle = new PIXI.Text('How to Play', {
   fill: 0xffffff, stroke: 0x003a6e, strokeThickness: 5,
 });
 helpTitle.anchor.set(0.5);
-helpTitle.x = W / 2; helpTitle.y = 100;
+helpTitle.x = W / 2; helpTitle.y = 100 + PY;
 helpModal.addChild(helpTitle);
 
 const MODAL_ROWS = [
@@ -726,7 +728,7 @@ const MODAL_ROWS = [
   { type: 'speed',    name: 'Speed Boost', desc: 'Swim faster for 4 seconds'          },
   { type: 'regular',  name: 'Pearl',       desc: '+1 point each'                      },
 ];
-const ROW_YS = [150, 215, 278, 338];
+const ROW_YS = [150 + PY, 215 + PY, 278 + PY, 338 + PY];
 const ICON_X = 58;
 
 const modalIconGfx = new PIXI.Graphics();
@@ -795,7 +797,7 @@ const betaNotice = new PIXI.Text('★ Beta Test  ·  Ends 30 Jun 2026', {
   fontSize: 12, fill: 0xffcc44,
 });
 betaNotice.anchor.set(0.5);
-betaNotice.x = W / 2; betaNotice.y = 393;
+betaNotice.x = W / 2; betaNotice.y = 393 + PY;
 helpModal.addChild(betaNotice);
 
 const helpCloseHint = new PIXI.Text('tap anywhere to close', {
@@ -803,7 +805,7 @@ const helpCloseHint = new PIXI.Text('tap anywhere to close', {
   fontSize: 12, fill: 0x336688,
 });
 helpCloseHint.anchor.set(0.5);
-helpCloseHint.x = W / 2; helpCloseHint.y = 440;
+helpCloseHint.x = W / 2; helpCloseHint.y = 440 + PY;
 helpModal.addChild(helpCloseHint);
 
 // ─── Character select modal ───────────────────────────────────
@@ -820,7 +822,7 @@ charModal.addChild(charDim);
 const charPanel = new PIXI.Graphics();
 charPanel.beginFill(0x00111e, 0.97);
 charPanel.lineStyle(2, 0x0099cc, 0.65);
-charPanel.drawRoundedRect(22, 80, W - 44, 370, 18);
+charPanel.drawRoundedRect(22, 80 + PY, W - 44, 370, 18);
 charPanel.endFill();
 charModal.addChild(charPanel);
 
@@ -830,7 +832,7 @@ const charTitle = new PIXI.Text('Choose Your Fish', {
   fill: 0xffffff, stroke: 0x003a6e, strokeThickness: 5,
 });
 charTitle.anchor.set(0.5);
-charTitle.x = W / 2; charTitle.y = 112;
+charTitle.x = W / 2; charTitle.y = 112 + PY;
 charModal.addChild(charTitle);
 
 // Static fish preview graphics
@@ -838,7 +840,7 @@ const charPreviewGfx = new PIXI.Graphics();
 charModal.addChild(charPreviewGfx);
 
 const SLOT_XS = [78, 200, 322];
-const SLOT_Y  = 210;
+const SLOT_Y  = 210 + PY;
 const CHAR_NAMES = ['Puffy', 'Bubbles', 'Sunny'];
 
 ;(function drawCharPreviews() {
@@ -927,14 +929,14 @@ CHAR_NAMES.forEach((name, i) => {
     fill: 0xffffff, stroke: 0x002244, strokeThickness: 3,
   });
   nt.anchor.set(0.5);
-  nt.x = SLOT_XS[i]; nt.y = 275;
+  nt.x = SLOT_XS[i]; nt.y = 275 + PY;
   charModal.addChild(nt);
 });
 
 const charStartBtnGfx = new PIXI.Graphics();
 charStartBtnGfx.beginFill(0x001428, 0.95);
 charStartBtnGfx.lineStyle(2, 0xffdd44, 0.95);
-charStartBtnGfx.drawRoundedRect(W / 2 - 65, 330, 130, 38, 10);
+charStartBtnGfx.drawRoundedRect(W / 2 - 65, 330 + PY, 130, 38, 10);
 charStartBtnGfx.endFill();
 charModal.addChild(charStartBtnGfx);
 
@@ -944,7 +946,7 @@ const charStartBtnLabel = new PIXI.Text('START', {
   fill: 0xffdd44, stroke: 0x002244, strokeThickness: 3,
 });
 charStartBtnLabel.anchor.set(0.5);
-charStartBtnLabel.x = W / 2; charStartBtnLabel.y = 349;
+charStartBtnLabel.x = W / 2; charStartBtnLabel.y = 349 + PY;
 charModal.addChild(charStartBtnLabel);
 
 const charCloseHint = new PIXI.Text('tap outside to close', {
@@ -952,7 +954,7 @@ const charCloseHint = new PIXI.Text('tap outside to close', {
   fontSize: 11, fill: 0x336688,
 });
 charCloseHint.anchor.set(0.5);
-charCloseHint.x = W / 2; charCloseHint.y = 415;
+charCloseHint.x = W / 2; charCloseHint.y = 415 + PY;
 charModal.addChild(charCloseHint);
 
 // ─── Mute button (always visible, top-right below ?) ─────────
@@ -1338,8 +1340,8 @@ function handleTap(e) {
   if (showLeader) { showLeader = false; return; }
   if (showHelp)   { showHelp   = false; return; }
   if (showCharSelect) {
-    // Start button hit: rect centered at (W/2, 349), 130×38
-    if (x >= W / 2 - 65 && x <= W / 2 + 65 && y >= 330 && y <= 368) {
+    // Start button hit: rect centered at (W/2, 349+PY), 130×38
+    if (x >= W / 2 - 65 && x <= W / 2 + 65 && y >= 330 + PY && y <= 368 + PY) {
       charSelectedThisSession = true;
       showCharSelect = false;
       if (charSelectPendingStart) { charSelectPendingStart = false; gameState = 'playing'; }

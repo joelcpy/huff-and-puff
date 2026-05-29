@@ -1,7 +1,7 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  background: #020a14;
+  background: linear-gradient(to bottom, #071d3e 0%, #0c2d5a 50%, #051525 100%);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -10,6 +10,13 @@ body {
   overflow: hidden;
   position: fixed;
   width: 100%;
+}
+
+@media (max-width: 500px) {
+  #game-container canvas {
+    border-radius: 0;
+    box-shadow: none;
+  }
 }
 
 #game-container {
