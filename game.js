@@ -931,12 +931,28 @@ CHAR_NAMES.forEach((name, i) => {
   charModal.addChild(nt);
 });
 
-const charCloseHint = new PIXI.Text('tap a fish to select  ·  tap outside to close', {
+const charStartBtnGfx = new PIXI.Graphics();
+charStartBtnGfx.beginFill(0x001428, 0.95);
+charStartBtnGfx.lineStyle(2, 0xffdd44, 0.95);
+charStartBtnGfx.drawRoundedRect(W / 2 - 65, 330, 130, 38, 10);
+charStartBtnGfx.endFill();
+charModal.addChild(charStartBtnGfx);
+
+const charStartBtnLabel = new PIXI.Text('START', {
+  fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
+  fontSize: 16, fontWeight: 'bold',
+  fill: 0xffdd44, stroke: 0x002244, strokeThickness: 3,
+});
+charStartBtnLabel.anchor.set(0.5);
+charStartBtnLabel.x = W / 2; charStartBtnLabel.y = 349;
+charModal.addChild(charStartBtnLabel);
+
+const charCloseHint = new PIXI.Text('tap outside to close', {
   fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
   fontSize: 11, fill: 0x336688,
 });
 charCloseHint.anchor.set(0.5);
-charCloseHint.x = W / 2; charCloseHint.y = 435;
+charCloseHint.x = W / 2; charCloseHint.y = 415;
 charModal.addChild(charCloseHint);
 
 // ─── Mute button (always visible, top-right below ?) ─────────
@@ -1322,7 +1338,14 @@ function handleTap(e) {
   if (showLeader) { showLeader = false; return; }
   if (showHelp)   { showHelp   = false; return; }
   if (showCharSelect) {
-    let picked = false;
+    // Start button hit: rect centered at (W/2, 349), 130×38
+    if (x >= W / 2 - 65 && x <= W / 2 + 65 && y >= 330 && y <= 368) {
+      charSelectedThisSession = true;
+      showCharSelect = false;
+      if (charSelectPendingStart) { charSelectPendingStart = false; gameState = 'playing'; }
+      return;
+    }
+    // Fish slot taps — select only, keep modal open
     for (let i = 0; i < 3; i++) {
       const dx = x - SLOT_XS[i], dy = y - SLOT_Y;
       if (dx*dx + dy*dy <= 48*48) {
@@ -1331,11 +1354,12 @@ function handleTap(e) {
         drawCharSelRings();
         drawCharBtn();
         charSelectedThisSession = true;
-        picked = true;
+        return;
       }
     }
+    // Tap outside — close without starting
     showCharSelect = false;
-    if (picked && charSelectPendingStart) { charSelectPendingStart = false; gameState = 'playing'; }
+    charSelectPendingStart = false;
     return;
   }
   if (gameState === 'idle') {
