@@ -1,7 +1,12 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+html {
+  background: #020a14;
+  height: 100%;
+}
+
 body {
-  background: linear-gradient(to bottom, #071d3e 0%, #0c2d5a 50%, #051525 100%);
+  background: #020a14;
   display: flex;
   justify-content: center;
   align-items: center;
