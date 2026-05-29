@@ -133,6 +133,37 @@ function beginCrossfade() {
 
 attachTrackListeners(bgMusic);
 
+function crossfadeTo(url, loop) {
+  if (crossfading) {
+    if (bgMusicNext) { bgMusicNext.pause(); bgMusicNext = null; }
+    crossfading = false;
+  }
+  crossfading = true;
+  bgMusicNext = new Audio(url);
+  bgMusicNext.volume = 0;
+  bgMusicNext.muted  = muted;
+  if (loop) bgMusicNext.loop = true;
+  bgMusicNext.play().catch(() => {});
+  const cfStart = performance.now();
+  function cfTick(now) {
+    const p = Math.min((now - cfStart) / (FADE_SECS * 1000), 1);
+    if (!muted) {
+      bgMusic.volume     = TARGET_VOL * (1 - p);
+      bgMusicNext.volume = TARGET_VOL * p;
+    }
+    if (p < 1) {
+      requestAnimationFrame(cfTick);
+    } else {
+      bgMusic.pause();
+      bgMusic     = bgMusicNext;
+      bgMusicNext = null;
+      crossfading = false;
+      if (!loop) attachTrackListeners(bgMusic);
+    }
+  }
+  requestAnimationFrame(cfTick);
+}
+
 function startMusic() { bgMusic.play().catch(() => {}); }
 const autoplay = bgMusic.play();
 if (autoplay !== undefined) {
@@ -174,12 +205,14 @@ const fishLayer     = new PIXI.Container(); // background fish friends
 const bubbleLayer   = new PIXI.Container(); // rising bubbles
 const seaweedLayer  = new PIXI.Container(); // swaying seaweed
 const crabLayer     = new PIXI.Container(); // cute crab on the sand
+const caveWallLayer = new PIXI.Container(); // cave stalactites / stalagmites (level 2)
 const obstacleLayer = new PIXI.Container(); // coral obstacles
+const anglerLayer   = new PIXI.Container(); // anglerfish patrol (level 2)
 const pearlLayer    = new PIXI.Container(); // collectible pearls
 const playerLayer   = new PIXI.Container(); // Puffy the pufferfish
 const uiLayer       = new PIXI.Container(); // HUD text
 fishLayer.alpha = 0.32;
-app.stage.addChild(bgLayer, causticLayer, fishLayer, bubbleLayer, seaweedLayer, crabLayer, obstacleLayer, pearlLayer, playerLayer, uiLayer);
+app.stage.addChild(bgLayer, causticLayer, fishLayer, bubbleLayer, seaweedLayer, crabLayer, caveWallLayer, obstacleLayer, anglerLayer, pearlLayer, playerLayer, uiLayer);
 
 // ─── Background gradient + sand ──────────────────────────────
 (function buildBackground() {
@@ -232,6 +265,66 @@ app.stage.addChild(bgLayer, causticLayer, fishLayer, bubbleLayer, seaweedLayer, 
   bgLayer.addChild(sand);
 })();
 
+// ─── Cave overlay (Level 2 bg, fades in) ─────────────────────
+const caveBgSprite = (() => {
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const cx = c.getContext('2d');
+  const grad = cx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0,   '#01000b');
+  grad.addColorStop(0.5, '#04011a');
+  grad.addColorStop(1,   '#000009');
+  cx.fillStyle = grad;
+  cx.fillRect(0, 0, W, H);
+  const radial = cx.createRadialGradient(W / 2, H * 0.55, H * 0.05, W / 2, H * 0.55, H * 0.65);
+  radial.addColorStop(0, 'rgba(0,220,160,0.0)');
+  radial.addColorStop(1, 'rgba(0,80,55,0.14)');
+  cx.fillStyle = radial;
+  cx.fillRect(0, 0, W, H);
+  const sp = new PIXI.Sprite(PIXI.Texture.from(c));
+  sp.alpha = 0;
+  bgLayer.addChild(sp);
+  return sp;
+})();
+
+const caveWallGfx = new PIXI.Graphics();
+caveWallLayer.addChild(caveWallGfx);
+
+function updateCaveWalls(t, alpha) {
+  caveWallLayer.alpha = alpha;
+  const g = caveWallGfx;
+  g.clear();
+  if (alpha <= 0) return;
+
+  // Ceiling band
+  g.beginFill(0x03020d, 0.94);
+  g.drawRect(0, 0, W, 20);
+  g.endFill();
+  for (let x = 0; x < W; x += 14) {
+    const len = 16 + Math.sin(x * 0.45) * 9;
+    g.beginFill(0x07060f);
+    g.drawPolygon([x, 0, x + 7, 20 + len, x + 14, 0]);
+    g.endFill();
+    g.beginFill(0x00ffcc, 0.17 + 0.12 * Math.sin(t * 1.9 + x * 0.32));
+    g.drawCircle(x + 7, 20 + len - 3, 2.3);
+    g.endFill();
+  }
+
+  // Floor band (covers sand)
+  g.beginFill(0x030112, 0.96);
+  g.drawRect(0, H - 80, W, 80);
+  g.endFill();
+  for (let x = 7; x < W; x += 16) {
+    const len = 18 + Math.cos(x * 0.38) * 8;
+    g.beginFill(0x07060e);
+    g.drawPolygon([x - 7, H - 80, x, H - 80 - len, x + 7, H - 80]);
+    g.endFill();
+    g.beginFill(0x00ddaa, 0.15 + 0.10 * Math.sin(t * 1.5 + x * 0.41));
+    g.drawCircle(x, H - 80 - len + 3, 1.9);
+    g.endFill();
+  }
+}
+
 // ─── Caustic light rays ──────────────────────────────────────
 const caustics = Array.from({ length: 16 }, () => {
   const g = new PIXI.Graphics();
@@ -248,13 +341,22 @@ const caustics = Array.from({ length: 16 }, () => {
   };
 });
 
-function updateCaustics(t) {
+function updateCaustics(t, lvl) {
+  const lt = lvl || 0;
   caustics.forEach(c => {
     c.g.clear();
     const w = Math.sin(t * c.speed + c.phase);
-    c.g.beginFill(0x88ddff, c.alpha * (0.65 + 0.35 * w));
-    c.g.drawEllipse(c.x, c.y, c.rx * (1 + 0.22 * w), c.ry);
-    c.g.endFill();
+    const a = c.alpha * (0.65 + 0.35 * w);
+    if (lt < 0.99) {
+      c.g.beginFill(0x88ddff, a * (1 - lt));
+      c.g.drawEllipse(c.x, c.y, c.rx * (1 + 0.22 * w), c.ry);
+      c.g.endFill();
+    }
+    if (lt > 0.01) {
+      c.g.beginFill(0x00ffaa, a * lt * 0.55);
+      c.g.drawEllipse(c.x, c.y, c.rx * (1 + 0.22 * w) * 0.7, c.ry * 0.8);
+      c.g.endFill();
+    }
   });
 }
 
@@ -292,14 +394,27 @@ function updateBubbles() {
       continue;
     }
 
+    const lt = levelTransition || 0;
     b.g.clear();
-    b.g.lineStyle(1, 0xaaddff, b.alpha * 0.75);
-    b.g.beginFill(0xffffff, b.alpha * 0.1);
-    b.g.drawCircle(b.x, b.y, b.r);
-    b.g.endFill();
-    b.g.beginFill(0xffffff, b.alpha * 0.65);
-    b.g.drawCircle(b.x - b.r * 0.3, b.y - b.r * 0.3, b.r * 0.27);
-    b.g.endFill();
+    if (lt < 0.99) {
+      b.g.lineStyle(1, 0xaaddff, b.alpha * 0.75 * (1 - lt));
+      b.g.beginFill(0xffffff, b.alpha * 0.1 * (1 - lt));
+      b.g.drawCircle(b.x, b.y, b.r);
+      b.g.endFill();
+      b.g.lineStyle(0);
+      b.g.beginFill(0xffffff, b.alpha * 0.65 * (1 - lt));
+      b.g.drawCircle(b.x - b.r * 0.3, b.y - b.r * 0.3, b.r * 0.27);
+      b.g.endFill();
+    }
+    if (lt > 0.01) {
+      b.g.lineStyle(0);
+      b.g.beginFill(0x00ffcc, b.alpha * 0.13 * lt);
+      b.g.drawCircle(b.x, b.y, b.r * 2.6);
+      b.g.endFill();
+      b.g.beginFill(0x00ddaa, b.alpha * 0.88 * lt);
+      b.g.drawCircle(b.x, b.y, b.r * 0.85);
+      b.g.endFill();
+    }
   }
 }
 
@@ -335,7 +450,8 @@ function updateSeaweed(t) {
   });
 }
 
-// ─── Cute crab strolling on the sand ─────────────────────────
+// ─── Cute 
+//  strolling on the sand ─────────────────────────
 const crab = {
   g:        new PIXI.Graphics(),
   x:        W * 0.5,
@@ -636,6 +752,48 @@ retryText.anchor.set(0.5);
 retryText.x = W / 2;
 retryText.y = 438 + PY;
 gameOverScreen.addChild(retryText);
+
+// ─── Level-up banner ─────────────────────────────────────────
+const levelBanner = new PIXI.Container();
+levelBanner.visible = false;
+uiLayer.addChild(levelBanner);
+
+// Compact two-line pill near the bottom — "LEVEL 2" with "The Deep Cave"
+// stacked beneath it, clear of the passage and the top-centre score.
+const BANNER_CY = H - 60;
+
+const lvlTitleText = new PIXI.Text('LEVEL 2', {
+  fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
+  fontSize: 24, fontWeight: 'bold',
+  fill: ['#00ffcc', '#0088ff'],
+  fillGradientStops: [0, 1],
+  stroke: 0x003040, strokeThickness: 4,
+  dropShadow: true, dropShadowDistance: 2, dropShadowAlpha: 0.5,
+});
+lvlTitleText.anchor.set(0.5);
+lvlTitleText.x = W / 2;
+lvlTitleText.y = BANNER_CY - 13;
+
+const lvlSubText = new PIXI.Text('The Deep Cave', {
+  fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
+  fontSize: 16,
+  fill: 0x88e6d6,
+  stroke: 0x002030, strokeThickness: 2,
+});
+lvlSubText.anchor.set(0.5);
+lvlSubText.x = W / 2;
+lvlSubText.y = BANNER_CY + 14;
+
+const bw = Math.max(lvlTitleText.width, lvlSubText.width) + 44;
+const bh = 64;
+const lvlBgGfx = new PIXI.Graphics();
+lvlBgGfx.beginFill(0x000a1a, 0.72);
+lvlBgGfx.drawRoundedRect(W / 2 - bw / 2, BANNER_CY - bh / 2, bw, bh, 16);
+lvlBgGfx.endFill();
+lvlBgGfx.lineStyle(1.5, 0x00ffcc, 0.45);
+lvlBgGfx.drawRoundedRect(W / 2 - bw / 2, BANNER_CY - bh / 2, bw, bh, 16);
+lvlBgGfx.lineStyle(0);
+levelBanner.addChild(lvlBgGfx, lvlTitleText, lvlSubText);
 
 // ─── Help button + modal ─────────────────────────────────────
 let showHelp       = false;
@@ -1134,23 +1292,54 @@ const PIPE_GAP = 195;
 // screen between two obstacles — unreachable. Cap how far each gap moves from
 // the previous one so every jump stays fair.
 const MAX_GAP_DELTA = 190;
-const PIPE_MS  = 1800;
-const PIPE_SPD = 2.9;
+const PIPE_MS     = 1800;
+const PIPE_SPD    = 2.9;
+const LEVEL2_SCORE  = 300;
+const PIPE_SPD_L2   = 3.3;
+const ANGLER_SPACING = 720;  // world units between anglerfish spawns in L2
+const ANGLER_LURE_X  = -36;  // lure tip offset from body centre
+const ANGLER_LURE_Y  = -40;
+const ANGLER_SCALE   = 0.68; // overall anglerfish size (visual + hitbox)
+
+// ── Level 2 continuous cave tunnel ──
+// Instead of discrete columns, L2 is one winding rocky tunnel (a cenote-like
+// passage) defined by a moving array of ceiling/floor control points.
+const CAVE_SEG_W      = 34;   // world-units between cave control points
+const CAVE_GAP_BASE   = 338;  // base passage height (wide & forgiving)
+const CAVE_GAP_VAR    = 24;   // ± gap breathing
+const CAVE_GAP_MIN    = 300;  // never narrower than this
+const CAVE_SCORE_DIST = 250;  // world-units travelled per score point in tunnel
+const CAVE_PEARL_DIST = 250;  // world-units between pearl sets in tunnel
 
 const obstacles = [];
 const pearls    = [];
 let nextSpacing = 300;  // world-unit distance to leave before the next column
 let lastTopH    = null; // previous gap's top edge, for reachability clamping
 let lastBobAmp  = 0;    // previous gap's bob amplitude, reserved in the clamp
-let gameSpeed      = PIPE_SPD;
-let starCombo      = 0;
+let gameSpeed       = PIPE_SPD;
+let gameLevel          = 1;
+let levelTransition    = 0;
+let levelBannerT       = 0;
+let level2MusicStarted = false;
+const anglerfish     = [];
+let anglerSpawnDist  = 0;
+
+// Cave tunnel runtime state
+const caveSegs    = [];   // { x, ceil, floor, jagC, jagF, stal, glow, rubble }
+let caveActive    = false;
+let caveCenter    = 0;    // current passage centre (world Y)
+let caveSegPhase  = 0;    // drives the winding meander
+let caveGapPhase  = 0;    // drives gap breathing
+let caveScoreDist = 0;
+let cavePearlDist = 0;
+let caveEntrySeg  = 0;    // counts segments since entry, for a widening mouth
+const caveTunnelGfx = new PIXI.Graphics();
+obstacleLayer.addChild(caveTunnelGfx);
+let starCombo       = 0;
 let comboBurst     = 1;
 let nextSetBoost   = false;
 
-function spawnPearls(topH, botY) {
-  const cx      = W + 5 + PIPE_W / 2;
-  const mid     = topH + (botY - topH) / 2;
-  const spread  = (botY - topH) * 0.25;
+function spawnPearlSet(cx, midY, spread) {
   const boosted = nextSetBoost;
   nextSetBoost  = false;
   const colState = { starfishHit: false };
@@ -1161,8 +1350,18 @@ function spawnPearls(topH, botY) {
     const type = boosted
       ? (rand < 0.45 ? 'starfish' : rand < 0.53 ? 'poison' : rand < 0.62 ? 'speed' : 'regular')
       : (rand < 0.74 ? 'regular'  : rand < 0.86 ? 'starfish' : rand < 0.92 ? 'poison' : 'speed');
-    pearls.push({ g, x: cx, y: mid + i * spread, type, colState });
+    pearls.push({ g, x: cx, y: midY + i * spread, type, colState });
   });
+}
+
+function spawnPearls(topH, botY) {
+  spawnPearlSet(W + 5 + PIPE_W / 2, topH + (botY - topH) / 2, (botY - topH) * 0.25);
+}
+
+function spawnCavePearls() {
+  if (!caveSegs.length) return;
+  const s = caveSegs[caveSegs.length - 1];
+  spawnPearlSet(W + 12, (s.ceil + s.floor) / 2, (s.floor - s.ceil) * 0.22);
 }
 
 function drawCoralPair(g, topH, botY) {
@@ -1206,9 +1405,270 @@ function drawCoralPair(g, topH, botY) {
   g.endFill();
 }
 
+// ─── Level 2 cave tunnel ─────────────────────────────────────
+// A single continuous winding passage. `caveSegs` holds ceiling/floor control
+// points spaced CAVE_SEG_W apart in world-x; they scroll left and new ones are
+// generated on the right. The fish swims through the gap between rock masses.
+function caveBounds() {
+  return { top: PY + 34, bot: GROUND_Y - 34 };
+}
+
+function pushCaveSeg(x) {
+  const { top, bot } = caveBounds();
+  const span = bot - top;
+  // Winding centre: two layered sines for an organic, non-repeating meander.
+  // Gentle steps + low amplitude keep the curves long and flowing, not jagged.
+  caveSegPhase += 0.26;
+  caveGapPhase += 0.22;
+  const target = (top + bot) / 2
+               + Math.sin(caveSegPhase) * span * 0.20
+               + Math.sin(caveSegPhase * 0.43 + 1.3) * span * 0.09;
+  // Limit how far the centre can shift per segment so the passage stays
+  // reachable (the fish climbs/dives far faster than the world scrolls).
+  const maxStep = CAVE_SEG_W * 0.55;
+  caveCenter += Math.max(-maxStep, Math.min(maxStep, target - caveCenter));
+
+  // Mouth opens extra-wide and eases to the base gap over the first segments
+  // so entering the cave feels smooth rather than slamming into a passage.
+  const entryBonus = Math.max(0, 90 * (1 - caveEntrySeg / 16));
+  caveEntrySeg++;
+
+  let gap = CAVE_GAP_BASE + entryBonus + Math.sin(caveGapPhase) * CAVE_GAP_VAR;
+  if (gap < CAVE_GAP_MIN) gap = CAVE_GAP_MIN;
+  let ceil  = caveCenter - gap / 2;
+  let floor = caveCenter + gap / 2;
+  if (ceil  < top) { ceil  = top; floor = Math.min(bot, top + gap); }
+  if (floor > bot) { floor = bot; ceil  = Math.max(top, bot - gap); }
+
+  // Moonlit-teal monochrome palette — one cohesive colour family, calm.
+  const GLOW = [0x5fd6e0, 0x7fe9f0, 0x2fb8c4, 0x4fd0dc];
+  caveSegs.push({
+    x, ceil, floor,
+    jagC:   3 + Math.random() * 7,           // ceiling rock roughness
+    jagF:   3 + Math.random() * 7,           // floor rock roughness
+    stalC:  Math.random() < 0.4,             // stalactite here
+    stalF:  Math.random() < 0.4,             // stalagmite / rubble here
+    knobCol: GLOW[Math.floor(Math.random() * GLOW.length)],
+  });
+}
+
+function startCaveTunnel(seedY) {
+  const { top, bot } = caveBounds();
+  caveSegs.length = 0;
+  caveCenter   = Math.max(top + 80, Math.min(bot - 80, seedY));
+  caveSegPhase = Math.random() * Math.PI * 2;
+  caveGapPhase = Math.random() * Math.PI * 2;
+  caveScoreDist = 0;
+  cavePearlDist = 0;
+  caveEntrySeg  = 0;
+  caveActive   = true;
+}
+
+function caveEdgesAt(px) {
+  for (let i = 0; i < caveSegs.length - 1; i++) {
+    const a = caveSegs[i], b = caveSegs[i + 1];
+    if (px >= a.x && px <= b.x) {
+      const f = (px - a.x) / (b.x - a.x);
+      return { ceil: a.ceil + (b.ceil - a.ceil) * f, floor: a.floor + (b.floor - a.floor) * f };
+    }
+  }
+  return null;
+}
+
+function updateCaveTunnel(t, delta) {
+  for (const s of caveSegs) s.x -= gameSpeed * delta;
+  // Drop control points well past the left edge (keep one for the polygon edge).
+  while (caveSegs.length > 2 && caveSegs[1].x < -CAVE_SEG_W) caveSegs.shift();
+  // Generate ahead of the right edge. When first activated the tunnel mouth
+  // scrolls in from the right while the last L1 columns finish leaving.
+  while (!caveSegs.length || caveSegs[caveSegs.length - 1].x < W + CAVE_SEG_W * 2) {
+    const lastX = caveSegs.length ? caveSegs[caveSegs.length - 1].x : W;
+    pushCaveSeg(lastX + CAVE_SEG_W);
+  }
+  drawCaveTunnel(t);
+}
+
+// Trace a smooth curve through edge points [[x,y],...] using each point as a
+// quadratic control and the midpoints as anchors — rounds off the corners so
+// the rock walls flow instead of zig-zagging. Assumes current point is pts[0].
+function traceSmoothEdge(g, pts) {
+  const n = pts.length;
+  if (n < 3) { for (let i = 1; i < n; i++) g.lineTo(pts[i][0], pts[i][1]); return; }
+  for (let i = 1; i < n - 1; i++) {
+    const xc = (pts[i][0] + pts[i + 1][0]) / 2;
+    const yc = (pts[i][1] + pts[i + 1][1]) / 2;
+    g.quadraticCurveTo(pts[i][0], pts[i][1], xc, yc);
+  }
+  g.quadraticCurveTo(pts[n - 2][0], pts[n - 2][1], pts[n - 1][0], pts[n - 1][1]);
+}
+
+function drawCaveTunnel(t) {
+  const g = caveTunnelGfx;
+  g.clear();
+  if (caveSegs.length < 2) return;
+  const segs = caveSegs;
+  const x0 = segs[0].x, xN = segs[segs.length - 1].x;
+
+  const ceilPts  = segs.map(s => [s.x, s.ceil]);
+  const floorPts = segs.map(s => [s.x, s.floor]);
+
+  // ── Passage ambient bioluminescence (behind the rock) ──
+  // Steady, gentle teal glow — no pulsing (avoids the dizzying shimmer).
+  for (let i = 0; i < segs.length; i++) {
+    const s = segs[i];
+    const cy = (s.ceil + s.floor) / 2;
+    g.beginFill(0x12384a, 0.07);
+    g.drawEllipse(s.x, cy, CAVE_SEG_W * 1.2, (s.floor - s.ceil) * 0.42);
+    g.endFill();
+  }
+
+  // ── Ceiling rock mass (deep teal-navy) ──
+  g.beginFill(0x0a1f2e);
+  g.moveTo(x0, -6);
+  g.lineTo(ceilPts[0][0], ceilPts[0][1]);
+  traceSmoothEdge(g, ceilPts);
+  g.lineTo(xN, -6);
+  g.closePath();
+  g.endFill();
+
+  // ── Floor rock mass ──
+  g.beginFill(0x0c2230);
+  g.moveTo(x0, H + 6);
+  g.lineTo(floorPts[0][0], floorPts[0][1]);
+  traceSmoothEdge(g, floorPts);
+  g.lineTo(xN, H + 6);
+  g.closePath();
+  g.endFill();
+
+  // ── Inner rock band (depth) ──
+  g.lineStyle(7, 0x1d4a58, 0.4);
+  g.moveTo(ceilPts[0][0], ceilPts[0][1] + 5);
+  traceSmoothEdge(g, ceilPts.map(p => [p[0], p[1] + 5]));
+  g.moveTo(floorPts[0][0], floorPts[0][1] - 5);
+  traceSmoothEdge(g, floorPts.map(p => [p[0], p[1] - 5]));
+  g.lineStyle(0);
+
+  // ── Steady aqua rim glow along the passage edges (no flicker) ──
+  g.lineStyle(6, 0x2f9fb0, 0.16);
+  g.moveTo(ceilPts[0][0], ceilPts[0][1]);  traceSmoothEdge(g, ceilPts);
+  g.moveTo(floorPts[0][0], floorPts[0][1]); traceSmoothEdge(g, floorPts);
+  g.lineStyle(2, 0x5fd6e0, 0.42);
+  g.moveTo(ceilPts[0][0], ceilPts[0][1]);  traceSmoothEdge(g, ceilPts);
+  g.moveTo(floorPts[0][0], floorPts[0][1]); traceSmoothEdge(g, floorPts);
+  g.lineStyle(0);
+
+  // ── Rock knobs (dim) + teal coral / plants on the walls ──
+  for (let i = 0; i < segs.length; i++) {
+    const s = segs[i];
+    if (s.stalC) {
+      const dh = 7 + s.jagC * 0.9;
+      g.beginFill(0x103040);
+      g.drawEllipse(s.x, s.ceil + dh * 0.4, 7, dh);
+      g.endFill();
+      g.beginFill(s.knobCol, 0.45);
+      g.drawCircle(s.x, s.ceil + dh, 1.8);
+      g.endFill();
+    }
+    if (s.stalF) {
+      const ph = 7 + s.jagF * 0.9;
+      g.beginFill(0x123444);
+      g.drawEllipse(s.x, s.floor - ph * 0.4, 7, ph);
+      g.endFill();
+      g.beginFill(s.knobCol, 0.45);
+      g.drawCircle(s.x, s.floor - ph, 1.8);
+      g.endFill();
+    }
+  }
+}
+
+// ─── Anglerfish (Level 2 predator) ───────────────────────────
+function drawAngler(a, t) {
+  const g = a.g;
+  g.clear();
+  const pulse = 0.5 + 0.5 * Math.sin(t * 3.8 + a.phase);
+  const lx = ANGLER_LURE_X, ly = ANGLER_LURE_Y;
+
+  // ── Whole-body luminous bloom (the fish itself glows magenta) ──
+  g.beginFill(0xff2db0, 0.06 + 0.04 * pulse); g.drawEllipse(2, 0, 54, 42); g.endFill();
+  g.beginFill(0xff4dc0, 0.10 + 0.05 * pulse); g.drawEllipse(2, 0, 42, 30); g.endFill();
+  g.beginFill(0xff7ad6, 0.13 + 0.06 * pulse); g.drawEllipse(0, 0, 32, 22); g.endFill();
+
+  // Tail fin (glowing)
+  g.lineStyle(1.5, 0xff9ce0, 0.8);
+  g.beginFill(0xc71e87, 0.94);
+  g.drawPolygon([26, -14, 44, -22, 44, 22, 26, 14]);
+  g.endFill();
+  // Dorsal fin
+  g.beginFill(0xc71e87, 0.94);
+  g.drawPolygon([-2, -22, 8, -33, 18, -22]);
+  g.endFill();
+  // Body — luminous magenta with bright pink rim
+  g.beginFill(0xe61f9c, 0.97);
+  g.drawEllipse(0, 0, 30, 20);
+  g.endFill();
+  // Belly fin
+  g.beginFill(0xc71e87, 0.94);
+  g.drawPolygon([4, 20, 10, 29, 18, 20]);
+  g.endFill();
+  g.lineStyle(0);
+
+  // Bright bioluminescent body spots
+  [[-8, 6], [4, -7], [13, 5], [-2, 9]].forEach(([sx, sy], i) => {
+    const sa = 0.55 + 0.35 * Math.sin(t * 1.8 + i * 1.4);
+    g.beginFill(0xffd6f1, sa); g.drawCircle(sx, sy, 3); g.endFill();
+  });
+
+  // Eye — facing left (head side)
+  g.beginFill(0x2a0820); g.drawCircle(-22, -5, 6); g.endFill();
+  g.beginFill(0xfff0fa, 0.92); g.drawCircle(-22, -5, 2.5); g.endFill();
+
+  // Mouth with teeth
+  g.beginFill(0x3a0626);
+  g.drawPolygon([-30, -4, -39, 2, -30, 7]);
+  g.endFill();
+  g.beginFill(0xfff0fa, 0.9);
+  for (let i = 0; i < 3; i++) {
+    g.drawPolygon([-33 + i * 2.8, -3, -32.5 + i * 2.8, 2, -32 + i * 2.8, -3]);
+  }
+  g.endFill();
+
+  // Lure stalk
+  g.lineStyle(1.5, 0x665500, 0.8);
+  g.moveTo(-14, -20);
+  g.quadraticCurveTo(-28, -38, lx, ly);
+  g.lineStyle(0);
+
+  // ── Lure light — YELLOW bloom with white-hot core ──
+  g.beginFill(0xffdd22, 0.05 + 0.05 * pulse); g.drawCircle(lx, ly, 30); g.endFill();
+  g.beginFill(0xffe23a, 0.11 + 0.08 * pulse); g.drawCircle(lx, ly, 18); g.endFill();
+  g.beginFill(0xffea55, 0.22 + 0.14 * pulse); g.drawCircle(lx, ly, 10); g.endFill();
+  g.beginFill(0xffe23a, 0.6 + 0.4 * pulse);   g.drawCircle(lx, ly, 5 + pulse * 1.8); g.endFill();
+  g.beginFill(0xfffce0, 0.97);                g.drawCircle(lx, ly, 3);               g.endFill();
+}
+
+function spawnAngler() {
+  const playTop = PY + 120;
+  const playBot = GROUND_Y - 120;
+  if (playBot <= playTop) return;
+  const midY = playTop + Math.random() * (playBot - playTop);
+  const g = new PIXI.Graphics();
+  g.scale.set(ANGLER_SCALE);
+  anglerLayer.addChild(g);
+  anglerfish.push({
+    g,
+    x:     W + 55,
+    y:     midY,
+    baseY: midY,
+    amp:   50 + Math.random() * 38,
+    phase: Math.random() * Math.PI * 2,
+    speed: 0.65 + Math.random() * 0.35,
+  });
+}
+
 function spawnObstacle() {
+  const activeGap = PIPE_GAP;
   const minTop = PY + 90;
-  const maxTop = H - 80 - PIPE_GAP - 90;
+  const maxTop = H - 80 - activeGap - 90;
 
   // Decide movement up front so its bob can be reserved in the reach budget.
   const moving = Math.random() < 0.5;
@@ -1230,7 +1690,7 @@ function spawnObstacle() {
   }
   lastTopH   = topH;
   lastBobAmp = bobAmp;
-  const botY = topH + PIPE_GAP;
+  const botY = topH + activeGap;
 
   const g = new PIXI.Graphics();
   drawCoralPair(g, topH, botY);
@@ -1255,6 +1715,15 @@ function hitTest() {
     if (puffy.x + r > o.g.x + 3 && puffy.x - r < o.g.x + PIPE_W - 3) {
       if (puffy.y - r < o.topH + o.g.y || puffy.y + r > o.botY + o.g.y) return true;
     }
+  }
+  if (caveActive) {
+    const e = caveEdgesAt(puffy.x);
+    if (e && (puffy.y - r < e.ceil || puffy.y + r > e.floor)) return true;
+  }
+  for (const a of anglerfish) {
+    const lx = a.x + ANGLER_LURE_X * ANGLER_SCALE, ly = a.y + ANGLER_LURE_Y * ANGLER_SCALE;
+    if (Math.hypot(puffy.x - lx,  puffy.y - ly) < 11 * ANGLER_SCALE + r) return true;
+    if (Math.hypot(puffy.x - a.x, puffy.y - a.y) < 21 * ANGLER_SCALE + r) return true;
   }
   return false;
 }
@@ -1395,6 +1864,15 @@ function resetGame() {
   obstacles.length = 0;
   pearls.forEach(p => pearlLayer.removeChild(p.g));
   pearls.length = 0;
+  anglerfish.forEach(a => anglerLayer.removeChild(a.g));
+  anglerfish.length = 0;
+  anglerSpawnDist = 0;
+  caveActive    = false;
+  caveSegs.length = 0;
+  caveScoreDist = 0;
+  cavePearlDist = 0;
+  caveEntrySeg  = 0;
+  caveTunnelGfx.clear();
   nextSpacing = 300;
   lastTopH    = null;
   lastBobAmp  = 0;
@@ -1407,6 +1885,26 @@ function resetGame() {
   puffy.poisonTimer = 0;
   puffy.speedTimer  = 0;
   gameSpeed         = PIPE_SPD;
+  gameLevel         = 1;
+  levelTransition   = 0;
+  levelBannerT      = 0;
+  caveBgSprite.alpha = 0;
+  crabLayer.alpha   = 1;
+  seaweedLayer.alpha = 1;
+  fishLayer.alpha   = 0.32;
+  bubbleLayer.alpha = 1;
+  if (level2MusicStarted) {
+    level2MusicStarted = false;
+    crossfading = false;
+    if (bgMusicNext) { bgMusicNext.pause(); bgMusicNext = null; }
+    bgMusic.pause();
+    trackIndex = (trackIndex + 1) % TRACKS.length;
+    bgMusic = new Audio(TRACKS[trackIndex]);
+    bgMusic.volume = muted ? 0 : TARGET_VOL;
+    bgMusic.muted  = muted;
+    bgMusic.play().catch(() => {});
+    attachTrackListeners(bgMusic);
+  }
   deathHandled      = false;
   starCombo         = 0;
   comboBurst        = 1;
@@ -1772,11 +2270,16 @@ let t = 0;
 app.ticker.add(delta => {
   t += delta * 0.016;
 
-  updateCaustics(t);
+  updateCaustics(t, levelTransition);
   updateBubbles();
   updateSeaweed(t);
   updateCrab(delta);
   updateFishes(t, delta);
+  updateCaveWalls(t, caveActive ? 0 : levelTransition);
+  seaweedLayer.alpha = 1 - levelTransition;
+  crabLayer.alpha    = 1 - levelTransition;
+  fishLayer.alpha    = 0.32 * (1 - levelTransition);
+  bubbleLayer.alpha  = 1 - levelTransition;
 
   puffy.finPhase += delta * 0.12;
 
@@ -1786,12 +2289,51 @@ app.ticker.add(delta => {
     puffy.angle = Math.sin(t * 1.9) * 0.08;
 
   } else if (gameState === 'playing') {
-    // Spawn by world-distance, not a timer: the newest (rightmost) column must
-    // travel `nextSpacing` units past the spawn point before the next appears.
-    // This keeps spacing exact even when a speed boost or poison changes speed.
-    const newest = obstacles[obstacles.length - 1];
-    if (!newest || (W + 5) - newest.g.x >= nextSpacing) spawnObstacle();
+    // Level 2 transition
+    if (gameLevel === 1 && score >= LEVEL2_SCORE) {
+      gameLevel    = 2;
+      levelBannerT = 3.0;
+      startCaveTunnel(puffy.y);   // cave mouth opens where the fish is
+      // Clear any upcoming columns so none sit at the cave entrance.
+      for (let i = obstacles.length - 1; i >= 0; i--) {
+        if (obstacles[i].g.x + PIPE_W > puffy.x) {
+          obstacleLayer.removeChild(obstacles[i].g);
+          obstacles.splice(i, 1);
+        }
+      }
+      if (!level2MusicStarted) {
+        level2MusicStarted = true;
+        crossfadeTo('audio/glass-pulse.mp3', true);
+      }
+    }
+    if (gameLevel === 2 && levelTransition < 1) {
+      levelTransition = Math.min(1, levelTransition + delta * 0.008);
+      caveBgSprite.alpha = levelTransition;
+    }
 
+    if (gameLevel === 2) {
+      // ── Continuous cave tunnel (replaces columns in L2) ──
+      updateCaveTunnel(t, delta);
+      caveScoreDist += gameSpeed * delta;
+      while (caveScoreDist >= CAVE_SCORE_DIST) {
+        caveScoreDist -= CAVE_SCORE_DIST;
+        score++;
+        if (score > hiScore) hiScore = score;
+      }
+      cavePearlDist += gameSpeed * delta;
+      if (cavePearlDist >= CAVE_PEARL_DIST) {
+        cavePearlDist -= CAVE_PEARL_DIST;
+        spawnCavePearls();
+      }
+    } else {
+      // Spawn by world-distance, not a timer: the newest (rightmost) column must
+      // travel `nextSpacing` units past the spawn point before the next appears.
+      // This keeps spacing exact even when a speed boost or poison changes speed.
+      const newest = obstacles[obstacles.length - 1];
+      if (!newest || (W + 5) - newest.g.x >= nextSpacing) spawnObstacle();
+    }
+
+    // Scroll/cull columns (active in L1; any leftovers finish leaving in L2).
     for (let i = obstacles.length - 1; i >= 0; i--) {
       const o = obstacles[i];
       o.g.x -= gameSpeed * delta;
@@ -1799,8 +2341,7 @@ app.ticker.add(delta => {
 
       if (!o.passed && o.g.x + PIPE_W < puffy.x) {
         o.passed = true;
-        score++;
-        if (score > hiScore) hiScore = score;
+        if (gameLevel === 1) { score++; if (score > hiScore) hiScore = score; }
       }
 
       if (o.g.x + PIPE_W < -10) {
@@ -1810,6 +2351,36 @@ app.ticker.add(delta => {
     }
 
     updatePearls(t, delta);
+
+    // Anglerfish: spawn + scroll + patrol in Level 2, after a short grace
+    // period so the player eases into the cave before the predator appears.
+    if (gameLevel === 2 && score >= LEVEL2_SCORE + 8) {
+      anglerSpawnDist += gameSpeed * delta;
+      if (anglerSpawnDist >= ANGLER_SPACING) {
+        anglerSpawnDist -= ANGLER_SPACING;
+        spawnAngler();
+      }
+    }
+    for (let i = anglerfish.length - 1; i >= 0; i--) {
+      const a = anglerfish[i];
+      a.x -= gameSpeed * delta;
+      // Keep the predator lurking inside the winding passage, not in the rock.
+      const e = caveEdgesAt(a.x);
+      if (e) {
+        const c    = (e.ceil + e.floor) / 2;
+        const room = Math.max(6, (e.floor - e.ceil) / 2 - 24);
+        a.y = c + Math.max(-room, Math.min(room, Math.sin(t * a.speed + a.phase) * a.amp));
+      } else {
+        a.y = a.baseY + Math.sin(t * a.speed + a.phase) * a.amp;
+      }
+      a.g.x = a.x;
+      a.g.y = a.y;
+      drawAngler(a, t);
+      if (a.x < -70) {
+        anglerLayer.removeChild(a.g);
+        anglerfish.splice(i, 1);
+      }
+    }
 
     puffy.vy += GRAVITY * delta;
     puffy.y  += puffy.vy * delta;
@@ -1827,7 +2398,8 @@ app.ticker.add(delta => {
     if (puffy.shrinkTimer > 0) puffy.shrinkTimer -= delta * 0.016;
     if (puffy.happyTimer  > 0) puffy.happyTimer  -= delta * 0.016;
     if (puffy.speedTimer  > 0) puffy.speedTimer  -= delta * 0.016;
-    gameSpeed = puffy.speedTimer > 0 ? PIPE_SPD * 1.7 : puffy.poisonTimer > 0 ? PIPE_SPD * 0.6 : PIPE_SPD;
+    const baseSpd = gameLevel === 2 ? PIPE_SPD_L2 : PIPE_SPD;
+    gameSpeed = puffy.speedTimer > 0 ? baseSpd * 1.7 : puffy.poisonTimer > 0 ? baseSpd * 0.6 : baseSpd;
     if (comboBurst > 1) comboBurst = Math.max(1, comboBurst - delta * 0.06);
 
     puffy.angle = Math.min(Math.max(puffy.vy * 0.058, -0.5), 1.3);
@@ -1868,6 +2440,17 @@ app.ticker.add(delta => {
     ft.life -= delta * 0.016;
     ft.alpha = Math.min(1, ft.life / 0.3);
     if (ft.life <= 0) { uiLayer.removeChild(ft); floatTexts.splice(i, 1); }
+  }
+
+  // ── Level banner ──
+  if (levelBannerT > 0) {
+    levelBannerT -= delta * 0.016;
+    levelBanner.visible = true;
+    const fadeIn  = Math.min(1, (3.0 - levelBannerT) / 0.4);
+    const fadeOut = levelBannerT < 0.7 ? levelBannerT / 0.7 : 1;
+    levelBanner.alpha = Math.min(fadeIn, fadeOut);
+  } else {
+    levelBanner.visible = false;
   }
 
   // ── Score HUD ──

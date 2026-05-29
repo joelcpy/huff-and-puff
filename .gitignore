@@ -1,3 +1,4 @@
 config.js
 .env
 delete-score.mjs
+scripts/*
