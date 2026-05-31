@@ -678,7 +678,7 @@ goBg.drawRoundedRect(18, 62 + PY, W - 36, 400, 14);
 goBg.endFill();
 gameOverScreen.addChild(goBg);
 
-const ohNoText = new PIXI.Text('Oh no, Puffy!', {
+const ohNoText = new PIXI.Text('', {
   fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
   fontSize: 38,
   fontWeight: 'bold',
@@ -2474,6 +2474,7 @@ app.ticker.add(delta => {
   // ── Game-over screen ──
   gameOverScreen.visible = gameState === 'dead';
   if (gameState === 'dead') {
+    ohNoText.text    = `Oh no, ${CHAR_NAMES[selectedChar]}!`;
     goScoreText.text = `score  ${score}`;
     goBestText.text  = `best  ${hiScore}`;
     retryText.alpha  = 0.5 + 0.5 * Math.sin(t * 2.8);
