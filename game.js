@@ -121,8 +121,8 @@ function beginCrossfade() {
   function tick(now) {
     const p = Math.min((now - start) / (FADE_SECS * 1000), 1);
     if (!muted) {
-      bgMusic.volume     = TARGET_VOL * (1 - p);
-      bgMusicNext.volume = TARGET_VOL * p;
+      bgMusic.volume     = TARGET_VOL * Math.cos(p * Math.PI / 2);
+      bgMusicNext.volume = TARGET_VOL * Math.sin(p * Math.PI / 2);
     }
     if (p < 1) {
       requestAnimationFrame(tick);
@@ -139,29 +139,47 @@ function beginCrossfade() {
 
 attachTrackListeners(bgMusic);
 
-function crossfadeTo(url, loop) {
+function crossfadeTo(url, loop, fadeSecs = FADE_SECS, startTime = 0, loopFrom = 0) {
   if (crossfading) {
     if (bgMusicNext) { bgMusicNext.pause(); bgMusicNext = null; }
     crossfading = false;
   }
   crossfading = true;
-  bgMusicNext = new Audio(url);
-  bgMusicNext.volume = 0;
-  bgMusicNext.muted  = muted;
-  if (loop) bgMusicNext.loop = true;
-  bgMusicNext.play().catch(() => {});
+  const outEl = bgMusic;
+  bgMusicNext  = new Audio(url);
+  const inEl   = bgMusicNext;
+  inEl.volume  = 0;
+  inEl.muted   = muted;
+
+  if (loop && loopFrom > 0) {
+    // timeupdate loop avoids the gap that 'ended' can leave
+    inEl.addEventListener('timeupdate', () => {
+      if (inEl.duration && inEl.currentTime >= inEl.duration - 0.25) {
+        inEl.currentTime = loopFrom;
+      }
+    });
+  } else if (loop) {
+    inEl.loop = true;
+  }
+
+  // Seek after metadata so currentTime sticks on all browsers/iOS
+  if (startTime > 0) {
+    inEl.addEventListener('loadedmetadata', () => { inEl.currentTime = startTime; }, { once: true });
+  }
+  inEl.play().catch(() => {});
+
   const cfStart = performance.now();
   function cfTick(now) {
-    const p = Math.min((now - cfStart) / (FADE_SECS * 1000), 1);
+    const p = Math.min((now - cfStart) / (fadeSecs * 1000), 1);
     if (!muted) {
-      bgMusic.volume     = TARGET_VOL * (1 - p);
-      bgMusicNext.volume = TARGET_VOL * p;
+      outEl.volume = TARGET_VOL * Math.cos(p * Math.PI / 2);
+      inEl.volume  = TARGET_VOL * Math.sin(p * Math.PI / 2);
     }
     if (p < 1) {
       requestAnimationFrame(cfTick);
     } else {
-      bgMusic.pause();
-      bgMusic     = bgMusicNext;
+      outEl.pause();
+      bgMusic     = inEl;
       bgMusicNext = null;
       crossfading = false;
       if (!loop) attachTrackListeners(bgMusic);
@@ -759,6 +777,55 @@ retryText.x = W / 2;
 retryText.y = 438 + PY;
 gameOverScreen.addChild(retryText);
 
+// ─── Evolution overlay ────────────────────────────────────────
+const evolveContainer = new PIXI.Container();
+evolveContainer.visible = false;
+app.stage.addChild(evolveContainer);
+
+const evolveFlashGfx = new PIXI.Graphics();
+evolveFlashGfx.beginFill(0xffffff); evolveFlashGfx.drawRect(0, 0, W, H); evolveFlashGfx.endFill();
+evolveContainer.addChild(evolveFlashGfx);
+
+const evolveDarkGfx = new PIXI.Graphics();
+evolveDarkGfx.beginFill(0x000010); evolveDarkGfx.drawRect(0, 0, W, H); evolveDarkGfx.endFill();
+evolveContainer.addChild(evolveDarkGfx);
+
+const evolveRings = [];
+for (let _i = 0; _i < 5; _i++) {
+  const rg = new PIXI.Graphics();
+  evolveContainer.addChild(rg);
+  evolveRings.push(rg);
+}
+
+const evolveCharGfx = new PIXI.Graphics();
+evolveCharGfx.x = W / 2; evolveCharGfx.y = H / 2;
+evolveContainer.addChild(evolveCharGfx);
+
+const evolveText1 = new PIXI.Text('', {
+  fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
+  fontSize: 19, fontWeight: 'bold',
+  fill: 0xffffff, stroke: 0x001040, strokeThickness: 4,
+  align: 'center',
+});
+evolveText1.anchor.set(0.5);
+evolveText1.x = W / 2; evolveText1.y = H / 2 - 90;
+evolveContainer.addChild(evolveText1);
+
+const evolveText2 = new PIXI.Text('', {
+  fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
+  fontSize: 36, fontWeight: 'bold',
+  fill: ['#ffee00', '#ff8800'], fillGradientStops: [0, 1],
+  stroke: 0x330000, strokeThickness: 7,
+  dropShadow: true, dropShadowDistance: 4, dropShadowAlpha: 0.8,
+  align: 'center',
+});
+evolveText2.anchor.set(0.5);
+evolveText2.x = W / 2; evolveText2.y = H / 2 + 90;
+evolveContainer.addChild(evolveText2);
+
+const evolveImmunityBar = new PIXI.Graphics();
+uiLayer.addChild(evolveImmunityBar);
+
 // ─── Level-up banner ─────────────────────────────────────────
 const levelBanner = new PIXI.Container();
 levelBanner.visible = false;
@@ -981,8 +1048,9 @@ const MODAL_ROWS = [
   { type: 'poison',   name: 'Sea Urchin',  desc: 'Puffs up bigger and slows down'    },
   { type: 'speed',    name: 'Speed Boost', desc: 'Swim faster for 4 seconds'          },
   { type: 'regular',  name: 'Pearl',       desc: '+1 point each'                      },
+  { type: 'fruit',    name: 'Evolution Fruit', desc: 'Evolve into mega form · bump enemies for +10 pts' },
 ];
-const ROW_YS = [150 + PY, 215 + PY, 278 + PY, 338 + PY];
+const ROW_YS = [145 + PY, 198 + PY, 251 + PY, 304 + PY, 357 + PY];
 const ICON_X = 58;
 
 const modalIconGfx = new PIXI.Graphics();
@@ -1038,6 +1106,19 @@ MODAL_ROWS.forEach((row, i) => {
       g.lineStyle(1.2, 0x00ffdd, 0.7);
       [-3, 0, 3].forEach(dy => { g.moveTo(x-11, y+dy); g.lineTo(x-7, y+dy); });
       g.lineStyle(0);
+    } else if (row.type === 'fruit') {
+      g.beginFill(0xffaa00, 0.18); g.drawCircle(x, y, 14); g.endFill();
+      g.beginFill(0xcc00ff, 0.12); g.drawCircle(x, y, 11); g.endFill();
+      for (let fi = 0; fi < 8; fi++) {
+        const fa = (fi / 8) * Math.PI * 2;
+        g.lineStyle(1.2, fi % 2 === 0 ? 0xffee44 : 0xff88ff, 0.75);
+        g.moveTo(x + Math.cos(fa) * 6, y + Math.sin(fa) * 6);
+        g.lineTo(x + Math.cos(fa) * 12, y + Math.sin(fa) * 12);
+      }
+      g.lineStyle(0);
+      g.beginFill(0xffdd00); g.drawCircle(x, y, 6); g.endFill();
+      g.beginFill(0xcc00ff, 0.35); g.drawCircle(x + 2, y + 2, 3); g.endFill();
+      g.beginFill(0xffffff, 0.95); g.drawCircle(x - 2, y - 2, 1.5); g.endFill();
     } else {
       g.beginFill(0xddeeff, 0.3); g.drawCircle(x, y, 11); g.endFill();
       g.beginFill(0xffffff, 0.85); g.drawCircle(x, y, 7); g.endFill();
@@ -1051,7 +1132,7 @@ const betaNotice = new PIXI.Text('★ Beta Test  ·  Ends 30 Jun 2026', {
   fontSize: 12, fill: 0xffcc44,
 });
 betaNotice.anchor.set(0.5);
-betaNotice.x = W / 2; betaNotice.y = 393 + PY;
+betaNotice.x = W / 2; betaNotice.y = 390 + PY;
 helpModal.addChild(betaNotice);
 
 const helpCloseHint = new PIXI.Text('tap anywhere to close', {
@@ -1059,7 +1140,7 @@ const helpCloseHint = new PIXI.Text('tap anywhere to close', {
   fontSize: 12, fill: 0x336688,
 });
 helpCloseHint.anchor.set(0.5);
-helpCloseHint.x = W / 2; helpCloseHint.y = 440 + PY;
+helpCloseHint.x = W / 2; helpCloseHint.y = 434 + PY;
 helpModal.addChild(helpCloseHint);
 
 // ─── Character select modal ───────────────────────────────────
@@ -1095,7 +1176,15 @@ charModal.addChild(charPreviewGfx);
 
 const SLOT_XS = [78, 200, 322];
 const SLOT_Y  = 210 + PY;
-const CHAR_NAMES = ['Puffy', 'Bubbles', 'Sunny'];
+const CHAR_NAMES         = ['Puffy', 'Bubbles', 'Sunny'];
+const CHAR_EVOLVED_NAMES = ['King Puffer', 'Poseidon', 'Solar Blaze'];
+
+function hueToColor(h) {
+  const r  = Math.round(Math.abs(Math.cos(h * Math.PI * 2)) * 255);
+  const gg = Math.round(Math.abs(Math.cos((h - 0.33) * Math.PI * 2)) * 255);
+  const b  = Math.round(Math.abs(Math.cos((h - 0.67) * Math.PI * 2)) * 255);
+  return (r << 16) | (gg << 8) | b;
+}
 
 ;(function drawCharPreviews() {
   const g = charPreviewGfx;
@@ -1274,6 +1363,21 @@ function addFloatText(x, y, str, color) {
   floatTexts.push(ft);
 }
 
+const killParticles = [];
+function spawnAnglerfishKill(x, y) {
+  const cols = [0xff2db0, 0xff7ad6, 0xffaaee, 0xffffff, 0xcc1e87];
+  for (let i = 0; i < 12; i++) {
+    const g = new PIXI.Graphics();
+    const a = (i / 12) * Math.PI * 2 + Math.random() * 0.5;
+    const spd = 1.8 + Math.random() * 2.8;
+    const sz = 2.5 + Math.random() * 4;
+    g.beginFill(cols[i % cols.length], 0.95); g.drawCircle(0, 0, sz); g.endFill();
+    g.x = x; g.y = y;
+    uiLayer.addChild(g);
+    killParticles.push({ g, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd - 1.2, life: 1.0 });
+  }
+}
+
 // ─── Puffy the Pufferfish ────────────────────────────────────
 const puffyGfx = new PIXI.Graphics();
 playerLayer.addChild(puffyGfx);
@@ -1285,7 +1389,7 @@ const GROUND_Y = H - 80;
 const puffy = {
   x: 110, y: H / 2, vy: 0,
   puff: 0, puffTimer: 0, finPhase: 0, angle: 0,
-  shrinkTimer: 0, happyTimer: 0, poisonTimer: 0, speedTimer: 0,
+  shrinkTimer: 0, happyTimer: 0, poisonTimer: 0, speedTimer: 0, evolveTimer: 0,
 };
 
 // ─── Obstacles ───────────────────────────────────────────────
@@ -1319,6 +1423,12 @@ const CAVE_PEARL_DIST = 250;  // world-units between pearl sets in tunnel
 
 const obstacles = [];
 const pearls    = [];
+let fruitOnScreen  = false;
+let evolveScene    = false;
+let evolveSceneT   = 0;
+let evolveOutFade  = false;
+const EVOLVE_DURATION = 5.0;
+const EVOLVE_IMMUNITY = 15.0;
 let nextSpacing = 300;  // world-unit distance to leave before the next column
 let lastTopH    = null; // previous gap's top edge, for reachability clamping
 let lastBobAmp  = 0;    // previous gap's bob amplitude, reserved in the clamp
@@ -1351,7 +1461,27 @@ let starCombo       = 0;
 let comboBurst     = 1;
 let nextSetBoost   = false;
 
+function drawFruitGfx(g) {
+  g.beginFill(0xffaa00, 0.18); g.drawCircle(0, 0, 18); g.endFill();
+  g.beginFill(0xcc00ff, 0.12); g.drawCircle(0, 0, 14); g.endFill();
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    g.lineStyle(1.5, i % 2 === 0 ? 0xffee44 : 0xff88ff, 0.75);
+    g.moveTo(Math.cos(a) * 9, Math.sin(a) * 9);
+    g.lineTo(Math.cos(a) * 16, Math.sin(a) * 16);
+  }
+  g.lineStyle(0);
+  g.beginFill(0xffdd00); g.drawCircle(0, 0, 8); g.endFill();
+  g.beginFill(0xffff99, 0.6); g.drawEllipse(-1.5, -2, 5, 4); g.endFill();
+  g.beginFill(0xcc00ff, 0.35); g.drawCircle(2, 3, 4); g.endFill();
+  g.beginFill(0xffffff, 0.95); g.drawCircle(-2, -2, 2); g.endFill();
+  [[-11, -7], [11, 7], [-8, 10], [10, -10]].forEach(([sx, sy]) => {
+    g.beginFill(0xffffff, 0.85); g.drawCircle(sx, sy, 1.4); g.endFill();
+  });
+}
+
 function drawPearl(g, type) {
+  if (type === 'fruit') { drawFruitGfx(g); return; }
   const pulse = 0.85;
   if (type === 'starfish') {
     g.beginFill(0xff8833, 0.22 * pulse); g.drawCircle(0, 0, 17); g.endFill();
@@ -1393,13 +1523,17 @@ function spawnPearlSet(cx, midY, spread) {
   const boosted = nextSetBoost;
   nextSetBoost  = false;
   const colState = { starfishHit: false };
-  [-1, 0, 1].forEach(i => {
+  const spawnFruitIdx = (!fruitOnScreen && !boosted && puffy.evolveTimer <= 0 && gameLevel >= 2 && Math.random() < 0.04) ? 0 : -1;
+  if (spawnFruitIdx === 0) fruitOnScreen = true;
+  [-1, 0, 1].forEach((offset, idx) => {
     const g    = new PIXI.Graphics();
     const rand = Math.random();
-    const type = boosted
-      ? (rand < 0.45 ? 'starfish' : rand < 0.53 ? 'poison' : rand < 0.62 ? 'speed' : 'regular')
-      : (rand < 0.74 ? 'regular'  : rand < 0.86 ? 'starfish' : rand < 0.92 ? 'poison' : 'speed');
-    const py = midY + i * spread;
+    const type = (idx === 1 && spawnFruitIdx === 0)
+      ? 'fruit'
+      : boosted
+        ? (rand < 0.45 ? 'starfish' : rand < 0.53 ? 'poison' : rand < 0.62 ? 'speed' : 'regular')
+        : (rand < 0.74 ? 'regular'  : rand < 0.86 ? 'starfish' : rand < 0.92 ? 'poison' : 'speed');
+    const py = midY + offset * spread;
     drawPearl(g, type);
     g.x = cx; g.y = py;
     pearlLayer.addChild(g);
@@ -1752,6 +1886,7 @@ function spawnObstacle() {
 }
 
 function hitTest() {
+  if (puffy.evolveTimer > 0) return false;
   const r = puffy.poisonTimer > 0 ? 18 : puffy.shrinkTimer > 0 ? 5 : 8;
   if (puffy.y + r > GROUND_Y || puffy.y - r < 0) return true;
   for (const o of obstacles) {
@@ -1778,8 +1913,18 @@ function updatePearls(t, delta) {
 
     const dx = puffy.x - p.x;
     const dy = puffy.y - p.y;
-    if (Math.sqrt(dx * dx + dy * dy) < 18) {
-      if (p.type === 'starfish') {
+    const pickupR = p.type === 'fruit' ? 27 : 18;
+    if (Math.sqrt(dx * dx + dy * dy) < pickupR) {
+      if (p.type === 'fruit') {
+        fruitOnScreen = false;
+        evolveScene   = true;
+        evolveSceneT  = 0;
+        puffy.evolveTimer = EVOLVE_IMMUNITY;
+        evolveContainer.visible = true;
+        addFloatText(p.x, p.y, '★ EVOLVING!', 0xffdd00);
+        evolveOutFade = false;
+        crossfadeTo('audio/gilled-upgrade.mp3', true, 3);
+      } else if (p.type === 'starfish') {
         p.colState.starfishHit = true;
         starCombo++;
         comboBurst   = 1.8;
@@ -1788,7 +1933,7 @@ function updatePearls(t, delta) {
         score += pts;
         addFloatText(p.x, p.y, `+${pts}`, starCombo >= 3 ? 0xff8800 : starCombo >= 2 ? 0xffdd44 : 0xffffff);
       } else if (p.type === 'poison') {
-        puffy.poisonTimer = 5;
+        if (puffy.evolveTimer <= 0) puffy.poisonTimer = 5;
       } else if (p.type === 'speed') {
         puffy.speedTimer = 4;
       } else {
@@ -1803,6 +1948,7 @@ function updatePearls(t, delta) {
 
     if (p.x < -20) {
       if (p.type === 'starfish' && !p.colState.starfishHit) starCombo = 0;
+      if (p.type === 'fruit') fruitOnScreen = false;
       pearlLayer.removeChild(p.g); p.g.destroy();
       pearls.splice(i, 1);
       continue;
@@ -1810,6 +1956,7 @@ function updatePearls(t, delta) {
 
     p.g.x = p.x;
     p.g.y = p.y;
+    if (p.type === 'fruit') p.g.scale.set(0.9 + 0.1 * Math.sin(t * 4));
   }
 }
 
@@ -1862,6 +2009,12 @@ function resetGame() {
   puffy.happyTimer  = 0;
   puffy.poisonTimer = 0;
   puffy.speedTimer  = 0;
+  puffy.evolveTimer = 0;
+  evolveScene = false;
+  evolveSceneT = 0;
+  evolveOutFade = false;
+  evolveContainer.visible = false;
+  fruitOnScreen = false;
   gameSpeed         = PIPE_SPD;
   gameLevel         = 1;
   levelTransition   = 0;
@@ -1871,6 +2024,7 @@ function resetGame() {
   seaweedLayer.alpha = 1;
   fishLayer.alpha   = 0.32;
   bubbleLayer.alpha = 1;
+
   if (level2MusicStarted) {
     level2MusicStarted = false;
     crossfading = false;
@@ -1889,6 +2043,8 @@ function resetGame() {
   nextSetBoost      = false;
   floatTexts.forEach(ft => uiLayer.removeChild(ft));
   floatTexts.length = 0;
+  killParticles.forEach(kp => { uiLayer.removeChild(kp.g); kp.g.destroy(); });
+  killParticles.length = 0;
 }
 
 let _fullscreenDone = false;
@@ -2236,7 +2392,358 @@ function drawSunny(puff, finPhase, t) {
   }
 }
 
+function drawKingPuffer(g, t) {
+  const pulse    = 1 + 0.06 * Math.sin(t * 3.5);
+  const br       = 14 * pulse, bry = br * 0.82;
+  const spikeLen = 13 + 3 * Math.sin(t * 4);
+  const nSpikes  = 20;
+
+  // Two-layer pulsing gold aura
+  g.beginFill(0xffdd00, 0.16 + 0.08 * Math.sin(t * 4)); g.drawEllipse(0, 0, br + spikeLen + 12, bry + spikeLen + 12); g.endFill();
+  g.beginFill(0xff8800, 0.10 + 0.05 * Math.sin(t * 6)); g.drawEllipse(0, 0, br + spikeLen + 4,  bry + spikeLen + 4);  g.endFill();
+
+  // Orbiting golden 4-point stars
+  for (let i = 0; i < 6; i++) {
+    const a  = (i / 6) * Math.PI * 2 + t * 0.7;
+    const sx = Math.cos(a) * (br + spikeLen + 13) * 0.9;
+    const sy = Math.sin(a) * (br + spikeLen + 13) * 0.85;
+    const alpha = 0.5 + 0.4 * Math.sin(t * 3 + i);
+    const sz    = 3.5 + Math.sin(t * 4 + i);
+    const a0    = t * 2 + i * 1.5;
+    const pts   = [];
+    for (let j = 0; j < 8; j++) {
+      const a2 = a0 + (j / 8) * Math.PI * 2;
+      const r2 = j % 2 === 0 ? sz : sz * 0.38;
+      pts.push(sx + Math.cos(a2) * r2, sy + Math.sin(a2) * r2);
+    }
+    g.beginFill(i % 2 === 0 ? 0xffee44 : 0xffaa00, alpha); g.drawPolygon(pts); g.endFill();
+  }
+
+  // Large forked tail
+  g.beginFill(0xff8800);
+  g.drawPolygon([-br, -6, -br - 24, -18, -br - 28, -8, -br - 18, 0, -br - 28, 8, -br - 24, 18, -br, 6]);
+  g.endFill();
+  g.beginFill(0xffcc00, 0.75);
+  g.drawPolygon([-br, -4, -br - 16, -13, -br - 20, -5, -br - 13, 0, -br - 20, 5, -br - 16, 13, -br, 4]);
+  g.endFill();
+  g.beginFill(0xffee88, 0.42 + 0.22 * Math.sin(t * 5));
+  g.drawPolygon([-br, -2, -br - 10, -7, -br - 13, 0, -br - 10, 7, -br, 2]);
+  g.endFill();
+
+  // Tri-color spikes with glowing tips on alternates
+  for (let i = 0; i < nSpikes; i++) {
+    const a  = (i / nSpikes) * Math.PI * 2;
+    const bx = Math.cos(a) * br, by = Math.sin(a) * bry;
+    const nx = Math.cos(a), ny = Math.sin(a);
+    const sl = spikeLen + (i % 3 === 0 ? 2 : 0);
+    const tx = nx * (br + sl), ty = ny * (bry + sl);
+    g.beginFill(i % 3 === 0 ? 0xffffff : i % 3 === 1 ? 0xffdd00 : 0xffaa00);
+    g.drawPolygon([bx - ny * 2.5, by + nx * 2.5, tx, ty, bx + ny * 2.5, by - nx * 2.5]);
+    g.endFill();
+    if (i % 2 === 0) {
+      g.beginFill(0xffff88, 0.35 + 0.28 * Math.sin(t * 5 + i)); g.drawCircle(tx, ty, 2.2); g.endFill();
+    }
+  }
+
+  // Body + scale markings
+  g.beginFill(0xffd700); g.drawEllipse(0, 0, br, bry); g.endFill();
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 4; col++) {
+      const sx = -br * 0.5 + col * br * 0.35 + (row % 2 ? br * 0.17 : 0);
+      const sy = -bry * 0.4 + row * bry * 0.35;
+      if ((sx * sx) / (br * br) + (sy * sy) / (bry * bry) < 0.70) {
+        g.beginFill(0xff9900, 0.30); g.drawEllipse(sx, sy, br * 0.19, bry * 0.14); g.endFill();
+        g.lineStyle(0.7, 0xffdd55, 0.25); g.drawEllipse(sx, sy, br * 0.19, bry * 0.14); g.lineStyle(0);
+      }
+    }
+  }
+  g.beginFill(0xfffaaa, 0.42); g.drawEllipse(br * 0.1, bry * 0.2, br * 0.55, bry * 0.42); g.endFill();
+  g.lineStyle(1.5, 0xffee00, 0.22 + 0.18 * Math.sin(t * 7)); g.drawEllipse(0, 0, br + 1, bry + 1); g.lineStyle(0);
+
+  // Floating crown (bobs gently above the top spike)
+  const ccy = -(bry + spikeLen + 4) + Math.sin(t * 2) * 2;
+  const ccx = br * 0.28;
+  g.beginFill(0xffdd00);
+  g.drawRect(ccx - 8, ccy, 16, 5);
+  g.drawPolygon([ccx - 8, ccy, ccx - 5.5, ccy - 9,  ccx - 2, ccy]);
+  g.drawPolygon([ccx - 1, ccy, ccx,        ccy - 11, ccx + 1, ccy]);
+  g.drawPolygon([ccx + 2, ccy, ccx + 5.5,  ccy - 9,  ccx + 8, ccy]);
+  g.endFill();
+  [[0xff4444, ccx - 5.5, ccy - 6], [0x44ffdd, ccx, ccy - 8], [0x4488ff, ccx + 5.5, ccy - 6]].forEach(([c, cx, cy]) => {
+    g.beginFill(c, 0.95); g.drawCircle(cx, cy, 1.8); g.endFill();
+    g.beginFill(0xffffff, 0.7); g.drawCircle(cx - 0.6, cy - 0.6, 0.8); g.endFill();
+  });
+
+  // Glowing electric eye + arc flicker
+  const ex = br * 0.44, ey = -bry * 0.22, er = 5.5;
+  g.beginFill(0xffffff, 0.97); g.drawCircle(ex, ey, er); g.endFill();
+  g.beginFill(0x0099ee);       g.drawCircle(ex + 0.6, ey, er * 0.68); g.endFill();
+  g.beginFill(0x000066);       g.drawCircle(ex + 1.0, ey, er * 0.38); g.endFill();
+  g.beginFill(0xffffff, 0.95); g.drawCircle(ex + er * 0.25, ey - er * 0.32, er * 0.22); g.endFill();
+  g.lineStyle(1, 0xffee00, 0.4 + 0.3 * Math.sin(t * 5)); g.drawCircle(ex, ey, er + 2); g.lineStyle(0);
+  const arcV = Math.sin(t * 14);
+  if (arcV > 0.5) {
+    g.lineStyle(1.2, 0x88ffff, arcV * 0.85);
+    g.moveTo(ex - 3, ey - 5); g.lineTo(ex + 3, ey + 3);
+    g.moveTo(ex + 4, ey - 3); g.lineTo(ex - 2, ey + 4);
+    g.lineStyle(0);
+  }
+}
+
+function drawTitanJelly(g, t) {
+  const pulse = 1 + 0.06 * Math.sin(t * 3.5);
+  const br = 14 * pulse;
+
+  // Outer electric aura
+  g.beginFill(0x00ffee, 0.10 + 0.06 * Math.sin(t * 4)); g.drawCircle(0, 0, br + 22); g.endFill();
+  g.beginFill(0x0088ff, 0.08 + 0.05 * Math.sin(t * 6)); g.drawCircle(0, 0, br + 14); g.endFill();
+
+  // Orbiting bubble shield (Bubbles' signature, now a defence ring)
+  for (let i = 0; i < 7; i++) {
+    const a     = (i / 7) * Math.PI * 2 + t * 0.9;
+    const bx    = Math.cos(a) * (br + 16), by = Math.sin(a) * (br + 16);
+    const bsize = 3.5 + 1.5 * Math.sin(t * 3 + i);
+    const alpha = 0.55 + 0.35 * Math.sin(t * 2 + i * 0.9);
+    g.lineStyle(1.2, 0x88eeff, alpha * 0.8);
+    g.beginFill(0x88eeff, alpha * 0.18); g.drawCircle(bx, by, bsize); g.endFill();
+    g.lineStyle(0);
+    g.beginFill(0xffffff, alpha * 0.7); g.drawCircle(bx - bsize * 0.3, by - bsize * 0.35, bsize * 0.28); g.endFill();
+  }
+
+  // Large forked tail
+  g.beginFill(0x0066aa);
+  g.drawPolygon([-br, -6, -br - 24, -18, -br - 28, -8, -br - 18, 0, -br - 28, 8, -br - 24, 18, -br, 6]);
+  g.endFill();
+  g.beginFill(0x00aadd, 0.7);
+  g.drawPolygon([-br, -4, -br - 16, -13, -br - 20, -5, -br - 13, 0, -br - 20, 5, -br - 16, 13, -br, 4]);
+  g.endFill();
+  g.beginFill(0x00ffee, 0.35 + 0.2 * Math.sin(t * 5));
+  g.drawPolygon([-br, -2, -br - 10, -7, -br - 13, 0, -br - 10, 7, -br, 2]);
+  g.endFill();
+
+  // Pectoral fin
+  const fa = Math.sin(t * 2.5) * 0.3;
+  g.beginFill(0x0099cc, 0.85);
+  g.drawPolygon([2, -br * 0.15, 2 + Math.cos(fa + 0.3) * 14, -br * 0.15 - Math.sin(fa + 0.3) * 16, 2 + Math.cos(fa + 0.9) * 9, -br * 0.15 - Math.sin(fa + 0.9) * 10]);
+  g.endFill();
+
+  // Tall spiked dorsal crest
+  g.beginFill(0x0077bb, 0.9);
+  g.drawPolygon([-br * 0.3, -br, -br * 0.1, -br - 20, br * 0.1, -br - 16, br * 0.3, -br - 10, br * 0.4, -br]);
+  g.endFill();
+  g.beginFill(0x00ccee, 0.5);
+  g.drawPolygon([-br * 0.15, -br, -br * 0.05, -br - 14, br * 0.1, -br - 10, br * 0.25, -br]);
+  g.endFill();
+  for (let i = 0; i < 4; i++) {
+    g.lineStyle(1.2, 0x00eeff, 0.65);
+    const sx = -br * 0.2 + i * br * 0.15;
+    g.moveTo(sx, -br); g.lineTo(sx - 1, -br - 10 + i * 2);
+    g.lineStyle(0);
+  }
+
+  // Body
+  g.beginFill(0x00aadd); g.drawCircle(0, 0, br); g.endFill();
+  // Scale markings
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 4; col++) {
+      const sx = -br * 0.5 + col * br * 0.35 + (row % 2 ? br * 0.17 : 0);
+      const sy = -br * 0.35 + row * br * 0.35;
+      if (Math.sqrt(sx * sx + sy * sy) < br * 0.82) {
+        g.beginFill(0x0088bb, 0.35); g.drawEllipse(sx, sy, br * 0.2, br * 0.15); g.endFill();
+        g.lineStyle(0.7, 0x00ccff, 0.28); g.drawEllipse(sx, sy, br * 0.2, br * 0.15); g.lineStyle(0);
+      }
+    }
+  }
+  // Belly highlight
+  g.beginFill(0x88eeff, 0.45); g.drawEllipse(br * 0.15, br * 0.22, br * 0.55, br * 0.42); g.endFill();
+  // Electric edge
+  g.lineStyle(1.5, 0x00ffee, 0.22 + 0.18 * Math.sin(t * 7)); g.drawCircle(0, 0, br + 1); g.lineStyle(0);
+  // Arc flicker
+  const arc1 = Math.sin(t * 11);
+  if (arc1 > 0.4) {
+    g.lineStyle(1.3, 0x00ffff, arc1 * 0.8);
+    g.moveTo(-br * 0.4, -br * 0.6); g.lineTo(0, -br * 0.2); g.lineTo(br * 0.3, -br * 0.5);
+    g.lineStyle(0);
+  }
+
+  // Glowing eye
+  const ex = br * 0.36, ey = -br * 0.18, er = 6.5;
+  g.beginFill(0xffffff, 0.97); g.drawCircle(ex, ey, er); g.endFill();
+  g.beginFill(0x004477);       g.drawCircle(ex + 0.8, ey, er * 0.68); g.endFill();
+  g.beginFill(0x001133);       g.drawCircle(ex + 1.2, ey, er * 0.38); g.endFill();
+  g.beginFill(0xffffff, 0.95); g.drawCircle(ex + er * 0.25, ey - er * 0.32, er * 0.22); g.endFill();
+  g.lineStyle(1, 0x00ffee, 0.4 + 0.3 * Math.sin(t * 5)); g.drawCircle(ex, ey, er + 2); g.lineStyle(0);
+  // Rosy cheek — keeping Bubbles' cute touch
+  g.beginFill(0xff99cc, 0.38); g.drawEllipse(ex - 2, ey + er + 2, 9, 4); g.endFill();
+}
+
+function drawSolarBlaze(g, t) {
+  const pulse = 1 + 0.06 * Math.sin(t * 4);
+  const br = 13 * pulse, bry = br * 0.78;
+
+  // Three-layer fire aura
+  g.beginFill(0xff2200, 0.14 + 0.07 * Math.sin(t * 6));  g.drawEllipse(0, 0, br + 28, bry + 22); g.endFill();
+  g.beginFill(0xff8800, 0.11 + 0.06 * Math.sin(t * 9));  g.drawEllipse(0, 0, br + 18, bry + 13); g.endFill();
+  g.beginFill(0xffee00, 0.07 + 0.05 * Math.sin(t * 11)); g.drawEllipse(0, 0, br + 9,  bry + 6);  g.endFill();
+
+  // Orbiting fire embers with tiny flame tails
+  for (let i = 0; i < 8; i++) {
+    const a     = (i / 8) * Math.PI * 2 + t * 1.3;
+    const ex2   = Math.cos(a) * (br + 20), ey2 = Math.sin(a) * (bry + 14);
+    const alpha = 0.5 + 0.4 * Math.sin(t * 4 + i * 0.9);
+    const esz   = 2.5 + 1.2 * Math.sin(t * 3 + i);
+    g.beginFill(i % 3 === 0 ? 0xffee00 : i % 3 === 1 ? 0xff8800 : 0xff4400, alpha);
+    g.drawCircle(ex2, ey2, esz);
+    g.endFill();
+    const ea = Math.atan2(ey2, ex2) + Math.PI;
+    const fl = esz + 5 + Math.sin(t * 5 + i) * 2;
+    g.beginFill(0xffaa00, alpha * 0.5);
+    g.drawPolygon([
+      ex2 + Math.cos(ea - 0.3) * esz, ey2 + Math.sin(ea - 0.3) * esz,
+      ex2 + Math.cos(ea) * fl,        ey2 + Math.sin(ea) * fl,
+      ex2 + Math.cos(ea + 0.3) * esz, ey2 + Math.sin(ea + 0.3) * esz,
+    ]);
+    g.endFill();
+  }
+
+  // 8 rotating sun rays (enhanced)
+  for (let i = 0; i < 8; i++) {
+    const a   = (i / 8) * Math.PI * 2 + t * 0.6;
+    const len = 20 + 5 * Math.sin(t * 5 + i);
+    g.beginFill(i % 2 === 0 ? 0xffee00 : 0xff9900, 0.9);
+    g.drawPolygon([
+      Math.cos(a - 0.14) * (br + 1), Math.sin(a - 0.14) * (bry + 1),
+      Math.cos(a) * (br + len),      Math.sin(a) * (bry + len * 0.72),
+      Math.cos(a + 0.14) * (br + 1), Math.sin(a + 0.14) * (bry + 1),
+    ]);
+    g.endFill();
+  }
+
+  // Phoenix fan tail (3 layers)
+  g.beginFill(0xdd3300);
+  g.drawPolygon([-br, -8, -br - 28, -22, -br - 32, -10, -br - 22, 0, -br - 32, 10, -br - 28, 22, -br, 8]);
+  g.endFill();
+  g.beginFill(0xff7700, 0.82);
+  g.drawPolygon([-br, -5, -br - 20, -15, -br - 24, -6, -br - 15, 0, -br - 24, 6, -br - 20, 15, -br, 5]);
+  g.endFill();
+  g.beginFill(0xffee00, 0.45 + 0.22 * Math.sin(t * 5));
+  g.drawPolygon([-br, -2.5, -br - 12, -8, -br - 15, 0, -br - 12, 8, -br, 2.5]);
+  g.endFill();
+
+  // Flame dorsal fin with spines
+  g.beginFill(0xff5500, 0.92);
+  g.drawPolygon([-br * 0.3, -bry, -br * 0.15, -bry - 18, br * 0.05, -bry - 14, br * 0.2, -bry - 20, br * 0.38, -bry - 10, br * 0.5, -bry]);
+  g.endFill();
+  g.beginFill(0xffaa00, 0.55);
+  g.drawPolygon([-br * 0.15, -bry, br * 0.05, -bry - 12, br * 0.2, -bry - 16, br * 0.38, -bry - 7, br * 0.45, -bry]);
+  g.endFill();
+  for (let i = 0; i < 4; i++) {
+    g.lineStyle(1.2, 0xffdd44, 0.6);
+    g.moveTo(-br * 0.15 + i * br * 0.18, -bry); g.lineTo(-br * 0.15 + i * br * 0.18, -bry - 10 + i * 3);
+    g.lineStyle(0);
+  }
+
+  // Fire-wing pectoral fin
+  const fa = Math.sin(t * 2.5) * 0.35;
+  g.beginFill(0xff6600, 0.9);
+  g.drawPolygon([3, -bry * 0.12, 3 + Math.cos(fa + 0.2) * 16, -bry * 0.12 - Math.sin(fa + 0.2) * 18, 3 + Math.cos(fa + 0.65) * 11, -bry * 0.12 - Math.sin(fa + 0.65) * 12, 3 + Math.cos(fa + 1.1) * 7, -bry * 0.12 - Math.sin(fa + 1.1) * 8]);
+  g.endFill();
+  g.beginFill(0xffcc00, 0.45);
+  g.drawPolygon([3, -bry * 0.12, 3 + Math.cos(fa + 0.2) * 12, -bry * 0.12 - Math.sin(fa + 0.2) * 13, 3 + Math.cos(fa + 0.65) * 8, -bry * 0.12 - Math.sin(fa + 0.65) * 9]);
+  g.endFill();
+
+  // Body + scale markings
+  g.beginFill(0xff3300); g.drawEllipse(0, 0, br, bry); g.endFill();
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 4; col++) {
+      const sx = -br * 0.5 + col * br * 0.35 + (row % 2 ? br * 0.17 : 0);
+      const sy = -bry * 0.4 + row * bry * 0.35;
+      if ((sx * sx) / (br * br) + (sy * sy) / (bry * bry) < 0.70) {
+        g.beginFill(0xffaa00, 0.30); g.drawEllipse(sx, sy, br * 0.19, bry * 0.14); g.endFill();
+        g.lineStyle(0.7, 0xffdd44, 0.25); g.drawEllipse(sx, sy, br * 0.19, bry * 0.14); g.lineStyle(0);
+      }
+    }
+  }
+  // Blazing white stripe
+  g.beginFill(0xffffff, 0.92); g.drawEllipse(0, 0, br * 0.2, bry * 0.9); g.endFill();
+  g.lineStyle(0.8, 0xffee88, 0.4 + 0.3 * Math.sin(t * 6)); g.drawEllipse(0, 0, br * 0.2, bry * 0.9); g.lineStyle(0);
+  g.beginFill(0xff9966, 0.35); g.drawEllipse(br * 0.12, bry * 0.2, br * 0.52, bry * 0.4); g.endFill();
+  g.lineStyle(1.5, 0xff8800, 0.22 + 0.18 * Math.sin(t * 7)); g.drawEllipse(0, 0, br + 1, bry + 1); g.lineStyle(0);
+
+  // Blazing eye with glow ring
+  const ex = br * 0.44, ey = -bry * 0.2, er = 5.5;
+  g.beginFill(0xffffff, 0.97); g.drawCircle(ex, ey, er); g.endFill();
+  g.beginFill(0xff7700);       g.drawCircle(ex + 0.6, ey, er * 0.68); g.endFill();
+  g.beginFill(0x220000);       g.drawCircle(ex + 1.0, ey, er * 0.38); g.endFill();
+  g.beginFill(0xffee88, 0.95); g.drawCircle(ex + er * 0.22, ey - er * 0.3, er * 0.22); g.endFill();
+  g.lineStyle(1, 0xffaa00, 0.4 + 0.3 * Math.sin(t * 5)); g.drawCircle(ex, ey, er + 2); g.lineStyle(0);
+  const fv = Math.sin(t * 11);
+  if (fv > 0.4) {
+    g.lineStyle(1.2, 0xffee44, fv * 0.8);
+    g.moveTo(ex - 3, ey - 5); g.lineTo(ex + 2, ey - 1); g.lineTo(ex - 1, ey + 3);
+    g.lineStyle(0);
+  }
+}
+
+function updateEvolveScene(st) {
+  const p1 = Math.min(1, st / 0.35);
+  const p2 = st > 0.35 ? Math.min(1, (st - 0.35) / 0.55) : 0;
+  const p3 = st > 1.0  ? Math.min(1, (st - 1.0)  / 0.9)  : 0;
+  const p4 = st > 2.2  ? Math.min(1, (st - 2.2)  / 0.7)  : 0;
+  const p5 = st > 3.2  ? Math.min(1, (st - 3.2)  / 0.6)  : 0;
+  const p6 = st > 4.5  ? Math.min(1, (st - 4.5)  / 0.5)  : 0;
+  const gt = performance.now() / 1000;
+
+  evolveFlashGfx.alpha = p1 * (1 - p2);
+  evolveDarkGfx.alpha  = p2 * 0.82 * (1 - p6 * 0.9);
+
+  if (p3 > 0) {
+    evolveCharGfx.alpha    = p3;
+    evolveCharGfx.scale.set(1.4 + p3 * 1.8);
+    evolveCharGfx.rotation = (1 - p3) * Math.PI * 3;
+    evolveCharGfx.clear();
+    if      (selectedChar === 0) drawKingPuffer(evolveCharGfx, gt);
+    else if (selectedChar === 1) drawTitanJelly(evolveCharGfx, gt);
+    else                         drawSolarBlaze(evolveCharGfx, gt);
+  } else {
+    evolveCharGfx.alpha = 0;
+  }
+
+  const ringColor = [0xffdd00, 0xaa44ff, 0xff6600][selectedChar];
+  evolveRings.forEach((rg, i) => {
+    rg.clear();
+    if (p3 <= 0) return;
+    const phase = ((gt * 0.7 + i * 0.2) % 1);
+    const r     = 35 + phase * 130;
+    rg.lineStyle(2.5, ringColor, (1 - phase) * p3 * 0.65);
+    rg.drawCircle(W / 2, H / 2, r);
+    rg.lineStyle(0);
+  });
+
+  evolveText1.alpha = p4 * (1 - p6);
+  evolveText1.text  = p4 > 0 ? `${CHAR_NAMES[selectedChar]}... is evolving!` : '';
+
+  evolveText2.alpha = p5 * (1 - p6);
+  if (p5 > 0) {
+    evolveText2.text = CHAR_EVOLVED_NAMES[selectedChar].toUpperCase() + '!';
+    evolveText2.scale.set(0.6 + p5 * 0.55);
+  } else {
+    evolveText2.text = '';
+  }
+}
+
 function drawPlayer(puff, finPhase, t) {
+  if (puffy.evolveTimer > 0) {
+    puffyGfx.clear();
+    const auraCol = [0xffdd00, 0xaa44ff, 0xff6600][selectedChar];
+    puffyGfx.beginFill(auraCol, 0.22 + 0.12 * Math.sin(t * 7));
+    puffyGfx.drawCircle(0, 0, 26 + 4 * Math.sin(t * 4));
+    puffyGfx.endFill();
+    if      (selectedChar === 0) drawKingPuffer(puffyGfx, t);
+    else if (selectedChar === 1) drawTitanJelly(puffyGfx, t);
+    else                         drawSolarBlaze(puffyGfx, t);
+    return;
+  }
   if      (selectedChar === 1) drawBubbles(puff, finPhase, t);
   else if (selectedChar === 2) drawSunny(puff, finPhase, t);
   else                         drawPuffy(puff, finPhase, t);
@@ -2276,6 +2783,14 @@ app.ticker.add(delta => {
     puffy.angle = Math.sin(t * 1.9) * 0.08;
 
   } else if (gameState === 'playing') {
+    if (evolveScene) {
+      evolveSceneT += delta * 0.016;
+      updateEvolveScene(evolveSceneT);
+      if (evolveSceneT >= EVOLVE_DURATION) {
+        evolveScene = false;
+        evolveContainer.visible = false;
+      }
+    } else {
     // Level 2 transition
     if (gameLevel === 1 && score >= LEVEL2_SCORE) {
       gameLevel    = 2;
@@ -2304,7 +2819,7 @@ app.ticker.add(delta => {
       caveScoreDist += gameSpeed * delta;
       while (caveScoreDist >= CAVE_SCORE_DIST) {
         caveScoreDist -= CAVE_SCORE_DIST;
-        score++;
+        score += 1;
         if (score > hiScore) hiScore = score;
       }
       cavePearlDist += gameSpeed * delta;
@@ -2328,7 +2843,7 @@ app.ticker.add(delta => {
 
       if (!o.passed && o.g.x + PIPE_W < puffy.x) {
         o.passed = true;
-        if (gameLevel === 1) { score++; if (score > hiScore) hiScore = score; }
+        if (gameLevel === 1) { score += 1; if (score > hiScore) hiScore = score; }
       }
 
       if (o.g.x + PIPE_W < -10) {
@@ -2362,6 +2877,24 @@ app.ticker.add(delta => {
       }
       a.g.x = a.x;
       a.g.y = a.y;
+
+      // Evolved player bumps off anglerfish
+      if (puffy.evolveTimer > 0) {
+        const lx = a.x + ANGLER_LURE_X * ANGLER_SCALE;
+        const ly = a.y + ANGLER_LURE_Y * ANGLER_SCALE;
+        const bodyHit = Math.hypot(puffy.x - a.x, puffy.y - a.y) < 21 * ANGLER_SCALE + 14;
+        const lureHit = Math.hypot(puffy.x - lx,  puffy.y - ly)  < 11 * ANGLER_SCALE + 14;
+        if (bodyHit || lureHit) {
+          score += 10;
+          if (score > hiScore) hiScore = score;
+          addFloatText(a.x, a.y - 30, '+10', 0xffee44);
+          spawnAnglerfishKill(a.x, a.y);
+          anglerLayer.removeChild(a.g); a.g.destroy();
+          anglerfish.splice(i, 1);
+          continue;
+        }
+      }
+
       if (a.x < -70) {
         anglerLayer.removeChild(a.g); a.g.destroy();
         anglerfish.splice(i, 1);
@@ -2370,6 +2903,11 @@ app.ticker.add(delta => {
 
     puffy.vy += GRAVITY * delta;
     puffy.y  += puffy.vy * delta;
+
+    if (puffy.evolveTimer > 0) {
+      if (puffy.y < 20)             { puffy.y = 20;             puffy.vy = Math.max(0, puffy.vy); }
+      if (puffy.y > GROUND_Y - 20)  { puffy.y = GROUND_Y - 20; puffy.vy = Math.min(0, puffy.vy); }
+    }
 
     if (puffy.poisonTimer > 0) {
       puffy.poisonTimer -= delta * 0.016;
@@ -2384,6 +2922,14 @@ app.ticker.add(delta => {
     if (puffy.shrinkTimer > 0) puffy.shrinkTimer -= delta * 0.016;
     if (puffy.happyTimer  > 0) puffy.happyTimer  -= delta * 0.016;
     if (puffy.speedTimer  > 0) puffy.speedTimer  -= delta * 0.016;
+    if (puffy.evolveTimer > 0) {
+      puffy.evolveTimer -= delta * 0.016;
+      if (!evolveOutFade && puffy.evolveTimer <= 3) {
+        evolveOutFade = true;
+        crossfadeTo('audio/glass-pulse.mp3', true, 3);
+      }
+      if (puffy.evolveTimer <= 0) puffy.evolveTimer = 0;
+    }
     const baseSpd = gameLevel === 2 ? PIPE_SPD_L2 : PIPE_SPD;
     gameSpeed = puffy.speedTimer > 0 ? baseSpd * 1.7 : puffy.poisonTimer > 0 ? baseSpd * 0.6 : baseSpd;
     if (comboBurst > 1) comboBurst = Math.max(1, comboBurst - delta * 0.06);
@@ -2391,6 +2937,7 @@ app.ticker.add(delta => {
     puffy.angle = Math.min(Math.max(puffy.vy * 0.058, -0.5), 1.3);
 
     if (hitTest()) { gameState = 'dead'; handleDeath(); }
+    } // end !evolveScene
 
   } else if (gameState === 'dead') {
     puffy.vy    = Math.min(puffy.vy + GRAVITY * delta, 6);
@@ -2403,7 +2950,7 @@ app.ticker.add(delta => {
   puffyGfx.x        = puffy.x;
   puffyGfx.y        = puffy.y;
   puffyGfx.rotation = puffy.angle;
-  puffyGfx.scale.set(puffy.poisonTimer > 0 ? 1.2 : puffy.shrinkTimer > 0 ? 0.6 : 1.0);
+  puffyGfx.scale.set(puffy.evolveTimer > 0 ? 1.0 : puffy.poisonTimer > 0 ? 1.2 : puffy.shrinkTimer > 0 ? 0.6 : 1.0);
   drawPlayer(puffy.puff, puffy.finPhase, t);
 
   // ── Combo display ──
@@ -2428,6 +2975,17 @@ app.ticker.add(delta => {
     if (ft.life <= 0) { uiLayer.removeChild(ft); floatTexts.splice(i, 1); }
   }
 
+  // ── Kill particles ──
+  for (let i = killParticles.length - 1; i >= 0; i--) {
+    const kp = killParticles[i];
+    kp.g.x  += kp.vx * delta;
+    kp.g.y  += kp.vy * delta;
+    kp.vy   += 0.12 * delta;
+    kp.life -= delta * 0.028;
+    kp.g.alpha = Math.max(0, kp.life);
+    if (kp.life <= 0) { uiLayer.removeChild(kp.g); kp.g.destroy(); killParticles.splice(i, 1); }
+  }
+
   // ── Level banner ──
   if (levelBannerT > 0) {
     levelBannerT -= delta * 0.016;
@@ -2437,6 +2995,20 @@ app.ticker.add(delta => {
     levelBanner.alpha = Math.min(fadeIn, fadeOut);
   } else {
     levelBanner.visible = false;
+  }
+
+  // ── Evolve immunity bar ──
+  evolveImmunityBar.clear();
+  if (puffy.evolveTimer > 0 && gameState === 'playing') {
+    const frac   = puffy.evolveTimer / EVOLVE_IMMUNITY;
+    const barW   = W - 40;
+    const barX   = 20;
+    const barY   = H - 40;
+    const barCol = [0xffdd00, 0xaa44ff, 0xff6600][selectedChar];
+    evolveImmunityBar.beginFill(0x000020, 0.55); evolveImmunityBar.drawRoundedRect(barX - 2, barY - 2, barW + 4, 14, 5); evolveImmunityBar.endFill();
+    evolveImmunityBar.beginFill(barCol, 0.25 + 0.15 * Math.sin(t * 6)); evolveImmunityBar.drawRoundedRect(barX, barY, barW, 10, 4); evolveImmunityBar.endFill();
+    evolveImmunityBar.beginFill(barCol, 0.9); evolveImmunityBar.drawRoundedRect(barX, barY, barW * frac, 10, 4); evolveImmunityBar.endFill();
+    evolveImmunityBar.beginFill(0xffffff, 0.35); evolveImmunityBar.drawRoundedRect(barX, barY, barW * frac, 4, 2); evolveImmunityBar.endFill();
   }
 
   // ── Score HUD ──
