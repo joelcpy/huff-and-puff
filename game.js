@@ -732,7 +732,7 @@ goLeaderHeader.y = 205 + PY;
 gameOverScreen.addChild(goLeaderHeader);
 
 const goLeaderEntries = [];
-for (let i = 0; i < 8; i++) {
+for (let i = 0; i < 10; i++) {
   const lt = new PIXI.Text('', {
     fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
     fontSize: 13,
@@ -742,7 +742,7 @@ for (let i = 0; i < 8; i++) {
   });
   lt.anchor.set(0.5);
   lt.x = W / 2;
-  lt.y = 228 + PY + i * 22;
+  lt.y = 228 + PY + i * 18;
   gameOverScreen.addChild(lt);
   goLeaderEntries.push(lt);
 }
@@ -915,7 +915,7 @@ lbHeader.x = W / 2; lbHeader.y = 132 + PY;
 lbModal.addChild(lbHeader);
 
 const lbEntries = [];
-for (let i = 0; i < 8; i++) {
+for (let i = 0; i < 10; i++) {
   const lt = new PIXI.Text('', {
     fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
     fontSize: 14, fill: 0xffffff, stroke: 0x003a6e, strokeThickness: 2,
@@ -938,15 +938,15 @@ async function openLeaderboard() {
   showLeader = true;
   lbEntries[0].text = 'loading…';
   lbEntries[0].style.fill = 0x88bbdd;
-  for (let i = 1; i < 8; i++) lbEntries[i].text = '';
-  const top = await getTopScores(8);
+  for (let i = 1; i < 10; i++) lbEntries[i].text = '';
+  const top = await getTopScores(10);
   if (!showLeader) return;
   top.forEach((entry, i) => {
     const n = entry.name.length > 10 ? entry.name.slice(0, 10) + '…' : entry.name;
     lbEntries[i].text = `${i + 1}.  ${n}  ${entry.score}`;
     lbEntries[i].style.fill = i === 0 ? 0xffdd44 : i === 1 ? 0xccccdd : i === 2 ? 0xdd9944 : 0xffffff;
   });
-  for (let i = top.length; i < 8; i++) lbEntries[i].text = '';
+  for (let i = top.length; i < 10; i++) lbEntries[i].text = '';
 }
 
 // modal
@@ -1819,18 +1819,18 @@ async function handleDeath() {
   if (deathHandled) return;
   deathHandled = true;
   goLeaderEntries[0].text = 'loading…';
-  for (let i = 1; i < 5; i++) goLeaderEntries[i].text = '';
+  for (let i = 1; i < 10; i++) goLeaderEntries[i].text = '';
 
   const name = playerName.trim() || 'Anon';
   if (score > 0) await saveScore(name, score);
-  const top = await getTopScores(8);
+  const top = await getTopScores(10);
 
   top.forEach((entry, i) => {
     const n = entry.name.length > 9 ? entry.name.slice(0, 9) + '…' : entry.name;
     goLeaderEntries[i].text = `${i + 1}.  ${n}  ${entry.score}`;
     goLeaderEntries[i].style.fill = (entry.name === name && entry.score === score) ? 0xffdd44 : 0xffffff;
   });
-  for (let i = top.length; i < 5; i++) goLeaderEntries[i].text = '';
+  for (let i = top.length; i < 10; i++) goLeaderEntries[i].text = '';
 }
 
 function resetGame() {
