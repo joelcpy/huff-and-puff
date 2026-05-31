@@ -13,10 +13,16 @@ const app = new PIXI.Application({
   width: W, height: H,
   antialias: true,
   backgroundColor: 0x061525,
-  resolution: window.devicePixelRatio || 1,
+  // Cap the backing-buffer scale. Phones report devicePixelRatio ~3, which on a
+  // full-screen canvas rasterizes the heavy translucent-overdraw Level 2 cave at
+  // ~9× the pixel count of resolution:1 every frame — fill-rate bound, the prime
+  // suspect for phone-only L2 lag. Cap at 2 (~2.25× fewer px than dpr 3) for a
+  // big win with minimal softening; drop to 1.5 if the phone still lags.
+  resolution: Math.min(window.devicePixelRatio || 1, 2),
   autoDensity: true,
 });
 document.getElementById('game-container').appendChild(app.view);
+
 
 // ─── Player name ─────────────────────────────────────────────
 const nameInput  = document.getElementById('name-input');
@@ -1333,11 +1339,55 @@ let caveGapPhase  = 0;    // drives gap breathing
 let caveScoreDist = 0;
 let cavePearlDist = 0;
 let caveEntrySeg  = 0;    // counts segments since entry, for a widening mouth
-const caveTunnelGfx = new PIXI.Graphics();
-obstacleLayer.addChild(caveTunnelGfx);
+// Each segment pair gets its own PIXI.Graphics drawn once at spawn (draw-once
+// pattern). Culled segments return their Graphics to caveGfxPool — g.clear()
+// reuses the existing WebGL buffer in place, zero GC pressure. The container
+// is translated each frame for the scroll effect (no per-frame tessellation).
+let caveScroll    = 0;
+const caveContainer = new PIXI.Container();
+obstacleLayer.addChild(caveContainer);
+const caveGfxPool = Array.from({ length: 20 }, () => new PIXI.Graphics());
 let starCombo       = 0;
 let comboBurst     = 1;
 let nextSetBoost   = false;
+
+function drawPearl(g, type) {
+  const pulse = 0.85;
+  if (type === 'starfish') {
+    g.beginFill(0xff8833, 0.22 * pulse); g.drawCircle(0, 0, 17); g.endFill();
+    const spts = [];
+    for (let si = 0; si < 10; si++) {
+      const sa = (si / 10) * Math.PI * 2 - Math.PI / 2;
+      const sr = si % 2 === 0 ? 11 : 5;
+      spts.push(Math.cos(sa) * sr, Math.sin(sa) * sr);
+    }
+    g.beginFill(0xff7722); g.drawPolygon(spts); g.endFill();
+    g.beginFill(0xffcc44, 0.75); g.drawCircle(0, 0, 4); g.endFill();
+  } else {
+    g.beginFill(0x88ccff, 0.15 * pulse); g.drawCircle(0, 0, 11); g.endFill();
+    g.beginFill(0xf5f0ff);              g.drawCircle(0, 0, 6);  g.endFill();
+    g.beginFill(0xffbbee, 0.5);         g.drawCircle(0, 0, 4.5); g.endFill();
+  }
+  if (type === 'speed') {
+    g.beginFill(0x00ddcc, 0.25 * pulse); g.drawCircle(0, 0, 13); g.endFill();
+    g.beginFill(0x00bbaa);               g.drawCircle(0, 0, 7);  g.endFill();
+    g.beginFill(0x88ffee, 0.85);         g.drawCircle(0, 0, 4.5); g.endFill();
+    g.lineStyle(1.2, 0x00ffdd, 0.7);
+    [-3, 0, 3].forEach(oy => { g.moveTo(-11, oy); g.lineTo(-7, oy); });
+    g.lineStyle(0);
+  } else if (type === 'poison') {
+    g.beginFill(0x9900cc, 0.20 * pulse); g.drawCircle(0, 0, 16); g.endFill();
+    for (let si = 0; si < 12; si++) {
+      const sa = (si / 12) * Math.PI * 2;
+      g.beginFill(0xcc44ff, 0.9);
+      g.drawPolygon([Math.cos(sa-0.18)*5, Math.sin(sa-0.18)*5, Math.cos(sa)*12, Math.sin(sa)*12, Math.cos(sa+0.18)*5, Math.sin(sa+0.18)*5]);
+      g.endFill();
+    }
+    g.beginFill(0x440055); g.drawCircle(0, 0, 5.5); g.endFill();
+    g.beginFill(0xdd88ff, 0.75); g.drawCircle(0, 0, 3); g.endFill();
+  }
+  g.beginFill(0xffffff, 0.9); g.drawCircle(-2, -2, 1.8); g.endFill();
+}
 
 function spawnPearlSet(cx, midY, spread) {
   const boosted = nextSetBoost;
@@ -1345,12 +1395,15 @@ function spawnPearlSet(cx, midY, spread) {
   const colState = { starfishHit: false };
   [-1, 0, 1].forEach(i => {
     const g    = new PIXI.Graphics();
-    pearlLayer.addChild(g);
     const rand = Math.random();
     const type = boosted
       ? (rand < 0.45 ? 'starfish' : rand < 0.53 ? 'poison' : rand < 0.62 ? 'speed' : 'regular')
       : (rand < 0.74 ? 'regular'  : rand < 0.86 ? 'starfish' : rand < 0.92 ? 'poison' : 'speed');
-    pearls.push({ g, x: cx, y: midY + i * spread, type, colState });
+    const py = midY + i * spread;
+    drawPearl(g, type);
+    g.x = cx; g.y = py;
+    pearlLayer.addChild(g);
+    pearls.push({ g, x: cx, y: py, type, colState });
   });
 }
 
@@ -1406,6 +1459,62 @@ function drawCoralPair(g, topH, botY) {
 }
 
 // ─── Level 2 cave tunnel ─────────────────────────────────────
+// Draw one segment pair (a → b) into a pooled Graphics. Each pair is drawn
+// once at spawn and never redrawn; the container is translated for scrolling.
+function drawCaveSegGfx(a, b, prevSeg) {
+  const g = caveGfxPool.length ? caveGfxPool.pop() : new PIXI.Graphics();
+  g.clear();
+
+  // Smooth-curve anchors: midpoints between adjacent control points
+  const lx     = prevSeg ? (prevSeg.x + a.x) / 2 : a.x;
+  const lCeil  = prevSeg ? (prevSeg.ceil  + a.ceil)  / 2 : a.ceil;
+  const lFloor = prevSeg ? (prevSeg.floor + a.floor) / 2 : a.floor;
+  const rx     = (a.x + b.x) / 2;
+  const rCeil  = (a.ceil  + b.ceil)  / 2;
+  const rFloor = (a.floor + b.floor) / 2;
+
+  // Ceiling rock mass
+  g.beginFill(0x0a1f2e);
+  g.moveTo(lx, -6); g.lineTo(lx, lCeil);
+  g.quadraticCurveTo(a.x, a.ceil, rx, rCeil);
+  g.lineTo(rx, -6); g.closePath(); g.endFill();
+
+  // Floor rock mass
+  g.beginFill(0x0c2230);
+  g.moveTo(lx, H + 6); g.lineTo(lx, lFloor);
+  g.quadraticCurveTo(a.x, a.floor, rx, rFloor);
+  g.lineTo(rx, H + 6); g.closePath(); g.endFill();
+
+  // Inner rock band (depth)
+  g.lineStyle(7, 0x1d4a58, 0.4);
+  g.moveTo(lx, lCeil + 5);  g.quadraticCurveTo(a.x, a.ceil  + 5, rx, rCeil  + 5);
+  g.moveTo(lx, lFloor - 5); g.quadraticCurveTo(a.x, a.floor - 5, rx, rFloor - 5);
+  g.lineStyle(0);
+
+  // Aqua rim glow
+  g.lineStyle(6, 0x2f9fb0, 0.16);
+  g.moveTo(lx, lCeil);  g.quadraticCurveTo(a.x, a.ceil,  rx, rCeil);
+  g.moveTo(lx, lFloor); g.quadraticCurveTo(a.x, a.floor, rx, rFloor);
+  g.lineStyle(2, 0x5fd6e0, 0.42);
+  g.moveTo(lx, lCeil);  g.quadraticCurveTo(a.x, a.ceil,  rx, rCeil);
+  g.moveTo(lx, lFloor); g.quadraticCurveTo(a.x, a.floor, rx, rFloor);
+  g.lineStyle(0);
+
+  if (a.stalC) {
+    const dh = 7 + a.jagC * 0.9;
+    g.beginFill(0x103040); g.drawEllipse(a.x, a.ceil  + dh * 0.4, 7, dh); g.endFill();
+    g.beginFill(a.knobCol, 0.45); g.drawCircle(a.x, a.ceil  + dh, 1.8); g.endFill();
+  }
+  if (a.stalF) {
+    const ph = 7 + a.jagF * 0.9;
+    g.beginFill(0x123444); g.drawEllipse(a.x, a.floor - ph * 0.4, 7, ph); g.endFill();
+    g.beginFill(a.knobCol, 0.45); g.drawCircle(a.x, a.floor - ph, 1.8); g.endFill();
+  }
+
+  caveContainer.addChild(g);
+  a.gfx = g;
+}
+
 // A single continuous winding passage. `caveSegs` holds ceiling/floor control
 // points spaced CAVE_SEG_W apart in world-x; they scroll left and new ones are
 // generated on the right. The fish swims through the gap between rock masses.
@@ -1444,16 +1553,25 @@ function pushCaveSeg(x) {
   const GLOW = [0x5fd6e0, 0x7fe9f0, 0x2fb8c4, 0x4fd0dc];
   caveSegs.push({
     x, ceil, floor,
-    jagC:   3 + Math.random() * 7,           // ceiling rock roughness
-    jagF:   3 + Math.random() * 7,           // floor rock roughness
-    stalC:  Math.random() < 0.4,             // stalactite here
-    stalF:  Math.random() < 0.4,             // stalagmite / rubble here
+    jagC:   3 + Math.random() * 7,
+    jagF:   3 + Math.random() * 7,
+    stalC:  Math.random() < 0.4,
+    stalF:  Math.random() < 0.4,
     knobCol: GLOW[Math.floor(Math.random() * GLOW.length)],
+    gfx: null,
   });
+  // Draw the pair (N-2, N-1) now that both endpoints are known.
+  if (caveSegs.length >= 2) {
+    const i = caveSegs.length - 2;
+    drawCaveSegGfx(caveSegs[i], caveSegs[i + 1], caveSegs[i - 1] || null);
+  }
 }
 
 function startCaveTunnel(seedY) {
   const { top, bot } = caveBounds();
+  caveSegs.forEach(s => {
+    if (s.gfx) { caveContainer.removeChild(s.gfx); s.gfx.clear(); caveGfxPool.push(s.gfx); }
+  });
   caveSegs.length = 0;
   caveCenter   = Math.max(top + 80, Math.min(bot - 80, seedY));
   caveSegPhase = Math.random() * Math.PI * 2;
@@ -1461,124 +1579,42 @@ function startCaveTunnel(seedY) {
   caveScoreDist = 0;
   cavePearlDist = 0;
   caveEntrySeg  = 0;
+  caveScroll    = 0;
+  caveContainer.x = 0;
   caveActive   = true;
 }
 
+// Edges at a SCREEN x. Segment x is world-space, so subtract the scroll offset.
 function caveEdgesAt(px) {
   for (let i = 0; i < caveSegs.length - 1; i++) {
     const a = caveSegs[i], b = caveSegs[i + 1];
-    if (px >= a.x && px <= b.x) {
-      const f = (px - a.x) / (b.x - a.x);
+    const ax = a.x - caveScroll, bx = b.x - caveScroll;
+    if (px >= ax && px <= bx) {
+      const f = (px - ax) / (bx - ax);
       return { ceil: a.ceil + (b.ceil - a.ceil) * f, floor: a.floor + (b.floor - a.floor) * f };
     }
   }
   return null;
 }
 
-function updateCaveTunnel(t, delta) {
-  for (const s of caveSegs) s.x -= gameSpeed * delta;
-  // Drop control points well past the left edge (keep one for the polygon edge).
-  while (caveSegs.length > 2 && caveSegs[1].x < -CAVE_SEG_W) caveSegs.shift();
-  // Generate ahead of the right edge. When first activated the tunnel mouth
-  // scrolls in from the right while the last L1 columns finish leaving.
-  while (!caveSegs.length || caveSegs[caveSegs.length - 1].x < W + CAVE_SEG_W * 2) {
-    const lastX = caveSegs.length ? caveSegs[caveSegs.length - 1].x : W;
+function updateCaveTunnel(delta) {
+  caveScroll += gameSpeed * delta;
+  // Pool Graphics for segments that have scrolled past the left edge.
+  while (caveSegs.length > 2 && (caveSegs[1].x - caveScroll) < -CAVE_SEG_W) {
+    const culled = caveSegs[0];
+    if (culled.gfx) {
+      caveContainer.removeChild(culled.gfx);
+      culled.gfx.clear();
+      caveGfxPool.push(culled.gfx);
+    }
+    caveSegs.shift();
+  }
+  // Generate segments ahead of the right edge; pushCaveSeg draws each new pair.
+  while (!caveSegs.length || (caveSegs[caveSegs.length - 1].x - caveScroll) < W + CAVE_SEG_W * 2) {
+    const lastX = caveSegs.length ? caveSegs[caveSegs.length - 1].x : (caveScroll + W - CAVE_SEG_W);
     pushCaveSeg(lastX + CAVE_SEG_W);
   }
-  drawCaveTunnel(t);
-}
-
-// Trace a smooth curve through edge points [[x,y],...] using each point as a
-// quadratic control and the midpoints as anchors — rounds off the corners so
-// the rock walls flow instead of zig-zagging. Assumes current point is pts[0].
-function traceSmoothEdge(g, pts) {
-  const n = pts.length;
-  if (n < 3) { for (let i = 1; i < n; i++) g.lineTo(pts[i][0], pts[i][1]); return; }
-  for (let i = 1; i < n - 1; i++) {
-    const xc = (pts[i][0] + pts[i + 1][0]) / 2;
-    const yc = (pts[i][1] + pts[i + 1][1]) / 2;
-    g.quadraticCurveTo(pts[i][0], pts[i][1], xc, yc);
-  }
-  g.quadraticCurveTo(pts[n - 2][0], pts[n - 2][1], pts[n - 1][0], pts[n - 1][1]);
-}
-
-function drawCaveTunnel(t) {
-  const g = caveTunnelGfx;
-  g.clear();
-  if (caveSegs.length < 2) return;
-  const segs = caveSegs;
-  const x0 = segs[0].x, xN = segs[segs.length - 1].x;
-
-  const ceilPts  = segs.map(s => [s.x, s.ceil]);
-  const floorPts = segs.map(s => [s.x, s.floor]);
-
-  // ── Passage ambient bioluminescence (behind the rock) ──
-  // Steady, gentle teal glow — no pulsing (avoids the dizzying shimmer).
-  for (let i = 0; i < segs.length; i++) {
-    const s = segs[i];
-    const cy = (s.ceil + s.floor) / 2;
-    g.beginFill(0x12384a, 0.07);
-    g.drawEllipse(s.x, cy, CAVE_SEG_W * 1.2, (s.floor - s.ceil) * 0.42);
-    g.endFill();
-  }
-
-  // ── Ceiling rock mass (deep teal-navy) ──
-  g.beginFill(0x0a1f2e);
-  g.moveTo(x0, -6);
-  g.lineTo(ceilPts[0][0], ceilPts[0][1]);
-  traceSmoothEdge(g, ceilPts);
-  g.lineTo(xN, -6);
-  g.closePath();
-  g.endFill();
-
-  // ── Floor rock mass ──
-  g.beginFill(0x0c2230);
-  g.moveTo(x0, H + 6);
-  g.lineTo(floorPts[0][0], floorPts[0][1]);
-  traceSmoothEdge(g, floorPts);
-  g.lineTo(xN, H + 6);
-  g.closePath();
-  g.endFill();
-
-  // ── Inner rock band (depth) ──
-  g.lineStyle(7, 0x1d4a58, 0.4);
-  g.moveTo(ceilPts[0][0], ceilPts[0][1] + 5);
-  traceSmoothEdge(g, ceilPts.map(p => [p[0], p[1] + 5]));
-  g.moveTo(floorPts[0][0], floorPts[0][1] - 5);
-  traceSmoothEdge(g, floorPts.map(p => [p[0], p[1] - 5]));
-  g.lineStyle(0);
-
-  // ── Steady aqua rim glow along the passage edges (no flicker) ──
-  g.lineStyle(6, 0x2f9fb0, 0.16);
-  g.moveTo(ceilPts[0][0], ceilPts[0][1]);  traceSmoothEdge(g, ceilPts);
-  g.moveTo(floorPts[0][0], floorPts[0][1]); traceSmoothEdge(g, floorPts);
-  g.lineStyle(2, 0x5fd6e0, 0.42);
-  g.moveTo(ceilPts[0][0], ceilPts[0][1]);  traceSmoothEdge(g, ceilPts);
-  g.moveTo(floorPts[0][0], floorPts[0][1]); traceSmoothEdge(g, floorPts);
-  g.lineStyle(0);
-
-  // ── Rock knobs (dim) + teal coral / plants on the walls ──
-  for (let i = 0; i < segs.length; i++) {
-    const s = segs[i];
-    if (s.stalC) {
-      const dh = 7 + s.jagC * 0.9;
-      g.beginFill(0x103040);
-      g.drawEllipse(s.x, s.ceil + dh * 0.4, 7, dh);
-      g.endFill();
-      g.beginFill(s.knobCol, 0.45);
-      g.drawCircle(s.x, s.ceil + dh, 1.8);
-      g.endFill();
-    }
-    if (s.stalF) {
-      const ph = 7 + s.jagF * 0.9;
-      g.beginFill(0x123444);
-      g.drawEllipse(s.x, s.floor - ph * 0.4, 7, ph);
-      g.endFill();
-      g.beginFill(s.knobCol, 0.45);
-      g.drawCircle(s.x, s.floor - ph, 1.8);
-      g.endFill();
-    }
-  }
+  caveContainer.x = -caveScroll;
 }
 
 // ─── Anglerfish (Level 2 predator) ───────────────────────────
@@ -1654,7 +1690,7 @@ function spawnAngler() {
   const g = new PIXI.Graphics();
   g.scale.set(ANGLER_SCALE);
   anglerLayer.addChild(g);
-  anglerfish.push({
+  const a = {
     g,
     x:     W + 55,
     y:     midY,
@@ -1662,7 +1698,14 @@ function spawnAngler() {
     amp:   50 + Math.random() * 38,
     phase: Math.random() * Math.PI * 2,
     speed: 0.65 + Math.random() * 0.35,
-  });
+  };
+  anglerfish.push(a);
+  // Draw the anglerfish geometry ONCE here, not every frame. Re-tessellating and
+  // re-uploading this complex translucent shape each frame churned WebGL buffers
+  // and triggered periodic GC stalls on the phone (the L2-only frame spikes). The
+  // fish still bobs and scrolls — only position animates now. Phase seeds a fixed
+  // glow snapshot so different fish don't look identical.
+  drawAngler(a, 0);
 }
 
 function spawnObstacle() {
@@ -1753,89 +1796,20 @@ function updatePearls(t, delta) {
       }
       puffy.happyTimer = 0.6;
       if (score > hiScore) hiScore = score;
-      pearlLayer.removeChild(p.g);
+      pearlLayer.removeChild(p.g); p.g.destroy();
       pearls.splice(i, 1);
       continue;
     }
 
     if (p.x < -20) {
       if (p.type === 'starfish' && !p.colState.starfishHit) starCombo = 0;
-      pearlLayer.removeChild(p.g);
+      pearlLayer.removeChild(p.g); p.g.destroy();
       pearls.splice(i, 1);
       continue;
     }
 
-    const pulse = 0.7 + 0.3 * Math.sin(t * 3 + p.y * 0.1);
-    p.g.clear();
-    if (p.type === 'starfish') {
-      p.g.beginFill(0xff8833, 0.22 * pulse);
-      p.g.drawCircle(p.x, p.y, 17);
-      p.g.endFill();
-      const spts = [];
-      for (let si = 0; si < 10; si++) {
-        const sa = (si / 10) * Math.PI * 2 - Math.PI / 2;
-        const sr = si % 2 === 0 ? 11 : 5;
-        spts.push(p.x + Math.cos(sa) * sr, p.y + Math.sin(sa) * sr);
-      }
-      p.g.beginFill(0xff7722);
-      p.g.drawPolygon(spts);
-      p.g.endFill();
-      p.g.beginFill(0xffcc44, 0.75);
-      p.g.drawCircle(p.x, p.y, 4);
-      p.g.endFill();
-    } else {
-      p.g.beginFill(0x88ccff, 0.15 * pulse);
-      p.g.drawCircle(p.x, p.y, 11);
-      p.g.endFill();
-      p.g.beginFill(0xf5f0ff);
-      p.g.drawCircle(p.x, p.y, 6);
-      p.g.endFill();
-      p.g.beginFill(0xffbbee, 0.5);
-      p.g.drawCircle(p.x, p.y, 4.5);
-      p.g.endFill();
-    }
-    if (p.type === 'speed') {
-      p.g.beginFill(0x00ddcc, 0.25 * pulse);
-      p.g.drawCircle(p.x, p.y, 13);
-      p.g.endFill();
-      p.g.beginFill(0x00bbaa);
-      p.g.drawCircle(p.x, p.y, 7);
-      p.g.endFill();
-      p.g.beginFill(0x88ffee, 0.85);
-      p.g.drawCircle(p.x, p.y, 4.5);
-      p.g.endFill();
-      p.g.lineStyle(1.2, 0x00ffdd, 0.7);
-      [-3, 0, 3].forEach(oy => {
-        p.g.moveTo(p.x - 11, p.y + oy);
-        p.g.lineTo(p.x - 7,  p.y + oy);
-      });
-      p.g.lineStyle(0);
-    } else if (p.type === 'poison') {
-      p.g.beginFill(0x9900cc, 0.20 * pulse);
-      p.g.drawCircle(p.x, p.y, 16);
-      p.g.endFill();
-      for (let si = 0; si < 12; si++) {
-        const sa   = (si / 12) * Math.PI * 2;
-        const tipX = p.x + Math.cos(sa) * 12;
-        const tipY = p.y + Math.sin(sa) * 12;
-        const b1x  = p.x + Math.cos(sa - 0.18) * 5;
-        const b1y  = p.y + Math.sin(sa - 0.18) * 5;
-        const b2x  = p.x + Math.cos(sa + 0.18) * 5;
-        const b2y  = p.y + Math.sin(sa + 0.18) * 5;
-        p.g.beginFill(0xcc44ff, 0.9);
-        p.g.drawPolygon([b1x, b1y, tipX, tipY, b2x, b2y]);
-        p.g.endFill();
-      }
-      p.g.beginFill(0x440055);
-      p.g.drawCircle(p.x, p.y, 5.5);
-      p.g.endFill();
-      p.g.beginFill(0xdd88ff, 0.75);
-      p.g.drawCircle(p.x, p.y, 3);
-      p.g.endFill();
-    }
-    p.g.beginFill(0xffffff, 0.9);
-    p.g.drawCircle(p.x - 2, p.y - 2, 1.8);
-    p.g.endFill();
+    p.g.x = p.x;
+    p.g.y = p.y;
   }
 }
 
@@ -1860,19 +1834,23 @@ async function handleDeath() {
 }
 
 function resetGame() {
-  obstacles.forEach(o => obstacleLayer.removeChild(o.g));
+  obstacles.forEach(o => { obstacleLayer.removeChild(o.g); o.g.destroy(); });
   obstacles.length = 0;
-  pearls.forEach(p => pearlLayer.removeChild(p.g));
+  pearls.forEach(p => { pearlLayer.removeChild(p.g); p.g.destroy(); });
   pearls.length = 0;
-  anglerfish.forEach(a => anglerLayer.removeChild(a.g));
+  anglerfish.forEach(a => { anglerLayer.removeChild(a.g); a.g.destroy(); });
   anglerfish.length = 0;
   anglerSpawnDist = 0;
   caveActive    = false;
+  caveSegs.forEach(s => {
+    if (s.gfx) { caveContainer.removeChild(s.gfx); s.gfx.clear(); caveGfxPool.push(s.gfx); }
+  });
   caveSegs.length = 0;
   caveScoreDist = 0;
   cavePearlDist = 0;
   caveEntrySeg  = 0;
-  caveTunnelGfx.clear();
+  caveScroll    = 0;
+  caveContainer.x = 0;
   nextSpacing = 300;
   lastTopH    = null;
   lastBobAmp  = 0;
@@ -2271,15 +2249,24 @@ app.ticker.add(delta => {
   t += delta * 0.016;
 
   updateCaustics(t, levelTransition);
-  updateBubbles();
-  updateSeaweed(t);
-  updateCrab(delta);
-  updateFishes(t, delta);
   updateCaveWalls(t, caveActive ? 0 : levelTransition);
-  seaweedLayer.alpha = 1 - levelTransition;
-  crabLayer.alpha    = 1 - levelTransition;
-  fishLayer.alpha    = 0.32 * (1 - levelTransition);
-  bubbleLayer.alpha  = 1 - levelTransition;
+
+  // Level 1 ambience (bubbles, seaweed, crabs, fish) fades to alpha 0 once we're
+  // fully inside the cave. Once invisible, stop both updating AND rendering it —
+  // otherwise Level 2 keeps redrawing all of it every frame behind the opaque
+  // rock, doing all of Level 1's work on top of the cave. That was the L2 lag.
+  const bgVisible = levelTransition < 1;
+  seaweedLayer.visible = crabLayer.visible = fishLayer.visible = bubbleLayer.visible = bgVisible;
+  if (bgVisible) {
+    updateBubbles();
+    updateSeaweed(t);
+    updateCrab(delta);
+    updateFishes(t, delta);
+    seaweedLayer.alpha = 1 - levelTransition;
+    crabLayer.alpha    = 1 - levelTransition;
+    fishLayer.alpha    = 0.32 * (1 - levelTransition);
+    bubbleLayer.alpha  = 1 - levelTransition;
+  }
 
   puffy.finPhase += delta * 0.12;
 
@@ -2313,7 +2300,7 @@ app.ticker.add(delta => {
 
     if (gameLevel === 2) {
       // ── Continuous cave tunnel (replaces columns in L2) ──
-      updateCaveTunnel(t, delta);
+      updateCaveTunnel(delta);
       caveScoreDist += gameSpeed * delta;
       while (caveScoreDist >= CAVE_SCORE_DIST) {
         caveScoreDist -= CAVE_SCORE_DIST;
@@ -2345,7 +2332,7 @@ app.ticker.add(delta => {
       }
 
       if (o.g.x + PIPE_W < -10) {
-        obstacleLayer.removeChild(o.g);
+        obstacleLayer.removeChild(o.g); o.g.destroy();
         obstacles.splice(i, 1);
       }
     }
@@ -2375,9 +2362,8 @@ app.ticker.add(delta => {
       }
       a.g.x = a.x;
       a.g.y = a.y;
-      drawAngler(a, t);
       if (a.x < -70) {
-        anglerLayer.removeChild(a.g);
+        anglerLayer.removeChild(a.g); a.g.destroy();
         anglerfish.splice(i, 1);
       }
     }
